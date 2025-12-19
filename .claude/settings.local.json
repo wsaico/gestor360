@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm install:*)",
+      "Bash(psql \"postgresql://postgres.ohbwsuktgmnycsokqdja:Willypolo1@aws-0-us-east-1.pooler.supabase.com:6543/postgres\" -c \"\\d menus\")",
+      "Bash(cat:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(timeout:*)",
+      "Bash(dir:*)",
+      "Bash(psql \"postgresql://postgres.ohbwsuktgmnycsokqdja:Willypolo1@aws-0-us-east-1.pooler.supabase.com:6543/postgres\" -f \"e:\\\\WILLY\\\\Gestor360\\\\SETUP_ASSETS_MODULE.sql\")"
+    ]
+  }
+}

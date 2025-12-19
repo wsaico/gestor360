@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sistema de personalización completo - Gestor360° - v3 Dark Mode Fix */
+:root {
+  /* Default Blue Theme */
+  --color-primary: #2563EB;
+  --color-primary-hover: #1D4ED8;
+  --color-ring: #3B82F6;
+
+  /* Variables de tema para elementos secundarios */
+  /* Backgrounds */
+  --color-primary-bg-light: var(--color-primary-50);
+  --color-primary-bg-medium: var(--color-primary-100);
+  --color-primary-bg-strong: var(--color-primary-900);
+
+  /* Borders */
+  --color-primary-border-light: var(--color-primary-200);
+  --color-primary-border-medium: var(--color-primary-500);
+
+  /* Text colors */
+  --color-primary-text-light: var(--color-primary-600);
+  --color-primary-text-dark: var(--color-primary-400);
+
+  /* Shadows */
+  --shadow-primary: 0 4px 6px -1px rgba(59, 130, 246, 0.1);
+
+  /* Icons */
+  --color-icon-primary: var(--color-primary-600);
+  --color-icon-primary-dark: var(--color-primary-400);
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-primary-bg-light: rgba(var(--color-primary-900-rgb), 0.2);
+  --color-primary-bg-medium: rgba(var(--color-primary-900-rgb), 0.3);
+  --color-primary-text-light: var(--color-primary-400);
+  --color-primary-text-dark: var(--color-primary-300);
+  --shadow-primary: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans antialiased transition-colors duration-200;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Dark Mode Base */
+  .dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2;
+  }
+
+  .btn-primary {
+    /* Usando variables CSS para el color dinámico */
+    background-color: var(--color-primary);
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-primary-hover);
+  }
+
+  .btn-primary:focus {
+    --tw-ring-color: var(--color-ring);
+  }
+
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-400;
+  }
+
+  .dark .btn-secondary {
+    @apply bg-gray-700 text-gray-200 hover:bg-gray-600 focus:ring-gray-500;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-md {
+    @apply px-4 py-2 text-base;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors;
+    --tw-ring-color: var(--color-ring);
+  }
+
+  .dark .input {
+    @apply bg-gray-800 border-gray-700 text-white disabled:bg-gray-900;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .dark .label {
+    @apply text-gray-300;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6 transition-colors;
+  }
+
+  .dark .card {
+    @apply bg-gray-800 border border-gray-700 shadow-none;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .dark .badge-success {
+    @apply bg-green-900 text-green-200;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .dark .badge-warning {
+    @apply bg-yellow-900 text-yellow-200;
+  }
+
+  .badge-danger {
+    @apply bg-red-100 text-red-800;
+  }
+
+  .dark .badge-danger {
+    @apply bg-red-900 text-red-200;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-800;
+  }
+
+  .dark .badge-info {
+    @apply bg-blue-900 text-blue-200;
+  }
+
+  /* Gestor360 Semantic Tables */
+  .gestor-table-container {
+    @apply card overflow-hidden p-0 border border-gray-200 dark:border-gray-700;
+  }
+
+  .gestor-table {
+    @apply min-w-full divide-y divide-gray-200 dark:divide-gray-700;
+  }
+
+  .gestor-thead {
+    @apply bg-gray-50 dark:bg-gray-800/50;
+  }
+
+  .gestor-th {
+    @apply px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider;
+  }
+
+  .gestor-tbody {
+    @apply bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700;
+  }
+
+  .gestor-tr-hover {
+    @apply hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors;
+  }
+
+  .gestor-td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200;
+  }
+
+  /* Gestor360 Semantic Modals */
+  .gestor-modal-backdrop {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity;
+  }
+
+  .gestor-modal-content {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full transform transition-all;
+  }
+
+  .gestor-modal-header {
+    @apply flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700;
+  }
+
+  .gestor-modal-title {
+    @apply text-xl font-bold text-gray-900 dark:text-white;
+  }
+
+  .gestor-modal-body {
+    @apply p-6;
+  }
+
+  .gestor-modal-footer {
+    @apply flex justify-end items-center p-6 gap-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700 rounded-b-xl;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
