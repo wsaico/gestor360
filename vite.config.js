@@ -30,5 +30,16 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js'],
+          'pdf-lib': ['jspdf', 'jspdf-autotable'],
+          'ui-lib': ['lucide-react', 'framer-motion']
+        }
+      }
+    }
   }
 })

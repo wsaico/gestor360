@@ -88,7 +88,25 @@ const SignatureCanvas = ({ onSave, onCancel, title = "Firma Digital" }) => {
     }
 
     const canvas = canvasRef.current
-    const signatureData = canvas.toDataURL('image/png')
+
+    // Create a temporary canvas to resize the image
+    const tempCanvas = document.createElement('canvas')
+    const tempCtx = tempCanvas.getContext('2d')
+
+    // Define max width for optimization
+    const maxWidth = 500
+    const scaleFactor = Math.min(1, maxWidth / canvas.width)
+
+    tempCanvas.width = canvas.width * scaleFactor
+    tempCanvas.height = canvas.height * scaleFactor
+
+    // Draw resized image
+    tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height)
+
+    // Get optimized data URL (JPEG for smaller size, or PNG if transparency needed - signatures usually on white background)
+    // Using PNG to keep transparency if ever needed, but at smaller resolution
+    const signatureData = tempCanvas.toDataURL('image/png')
+
     onSave(signatureData)
   }
 
