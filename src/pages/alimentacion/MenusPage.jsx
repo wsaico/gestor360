@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@contexts/AuthContext'
 import menuService from '@services/menuService'
+import stationService from '@services/stationService'
+import MenuWizard from './MenuWizard'
 import {
   UtensilsCrossed,
   Plus,
   Edit,
   Trash2,
   Calendar,
-  Clock,
   Coffee,
   Sun,
   Moon,
-  Building2,
-  X
+  Share2,
+  Building2
 } from 'lucide-react'
 import { MEAL_TYPES, MEAL_TYPE_LABELS } from '@utils/constants'
 import { formatDate } from '@utils/helpers'
@@ -27,8 +28,11 @@ const MenusPage = () => {
   const [menus, setMenus] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [showModal, setShowModal] = useState(false)
+
+  // Modal State
+  const [showWizard, setShowWizard] = useState(false)
   const [editingMenu, setEditingMenu] = useState(null)
+
   const [filterDate, setFilterDate] = useState('')
 
   useEffect(() => {
@@ -61,12 +65,12 @@ const MenusPage = () => {
 
   const handleEdit = (menu) => {
     setEditingMenu(menu)
-    setShowModal(true)
+    setShowWizard(true)
   }
 
   const handleNew = () => {
     setEditingMenu(null)
-    setShowModal(true)
+    setShowWizard(true)
   }
 
   const handleDelete = async (id) => {
@@ -84,8 +88,8 @@ const MenusPage = () => {
     }
   }
 
-  const handleModalSuccess = () => {
-    setShowModal(false)
+  const handleWizardSuccess = () => {
+    setShowWizard(false)
     setEditingMenu(null)
     fetchMenus()
   }
@@ -103,9 +107,97 @@ const MenusPage = () => {
     }
   }
 
+  const handleShare = async (menu) => {
+    try {
+      // 1. Get Station Config (Time)
+      // We might need to fetch it if not available in "station" from context context typically has partial data?
+      // Let's safe fetch or use available. Assume station from context might be enough or fetch full.
+      // Better fetch full to be safe about order times which might be recent.
+      const fullStation = await stationService.getById(menu.station_id)
+
+      const startTime = fullStation.order_start_time || '00:00'
+      const endTime = fullStation.order_end_time || '23:59'
+      const stationName = fullStation.name
+
+      // 2. Format Message
+      const emojiMeal = menu.meal_type === MEAL_TYPES.LUNCH ? '☀️' : menu.meal_type === MEAL_TYPES.DINNER ? '🌙' : '☕'
+      const mealLabel = MEAL_TYPE_LABELS[menu.meal_type]
+      const dateStr = formatDate(menu.serve_date)
+
+      let message = `*${emojiMeal} MENÚ DEL DÍA - ${dateStr}*\n`
+      message += `*Estación:* ${stationName}\n`
+      message += `*Horario de Pedidos:* ${startTime} - ${endTime}\n\n`
+
+      if (menu.description) {
+        message += `_${menu.description}_\n\n`
+      }
+
+      message += `*OPCIONES DISPONIBLES:*\n`
+
+      // Format Options
+      const items = Array.isArray(menu.options) ? menu.options : []
+      let currentSection = null
+
+      items.forEach(item => {
+        if (typeof item === 'string' && item.startsWith('SECTION:')) {
+          currentSection = item.replace('SECTION:', '')
+          message += `\n*📌 ${currentSection}*\n`
+        } else {
+          message += `• ${item}\n`
+        }
+      })
+
+      message += `\n📲 *Realiza tu pedido aquí:* \n`
+      // Link to the specific station orders if possible, or just the app link
+      // Assuming app is accessible via some URL. For now using generic placeholder or window.location.origin
+      const appUrl = window.location.origin + '/menu'
+      message += `${appUrl}`
+
+      // 3. Open WhatsApp
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
+      window.open(whatsappUrl, '_blank')
+
+    } catch (error) {
+      console.error('Error sharing:', error)
+      alert('Error al generar el mensaje de WhatsApp')
+    }
+  }
+
   // Shortcuts para fechas rápidas
   const today = new Date().toISOString().split('T')[0]
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+
+  // Render logic for menu options (supports Granular Sections)
+  const renderMenuOptions = (options) => {
+    const items = Array.isArray(options) ? options : []
+    const renderedItems = []
+
+    let currentSection = null
+
+    items.forEach((item, idx) => {
+      if (typeof item === 'string' && item.startsWith('SECTION:')) {
+        // Render Section Header
+        const sectionTitle = item.replace('SECTION:', '')
+        renderedItems.push(
+          <li key={`sec-${idx}`} className="pt-2 pb-1">
+            <span className="text-xs font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider block border-b border-primary-100 dark:border-primary-900/30 mb-1">
+              {sectionTitle}
+            </span>
+          </li>
+        )
+      } else {
+        // Render Item
+        renderedItems.push(
+          <li key={`opt-${idx}`} className="flex items-center space-x-2 pl-2">
+            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+            <span className="text-sm text-gray-700 dark:text-gray-300">{item}</span>
+          </li>
+        )
+      }
+    })
+
+    return <ul className="space-y-1">{renderedItems}</ul>
+  }
 
   if (loading) {
     return (
@@ -157,16 +249,6 @@ const MenusPage = () => {
               <div className="mt-2 text-sm text-red-700">
                 <p>{error}</p>
               </div>
-              {error.includes('migraciones SQL') && (
-                <div className="mt-4 text-sm text-red-700">
-                  <p className="font-medium mb-2">Para resolver este problema:</p>
-                  <ol className="list-decimal list-inside space-y-1">
-                    <li>Ejecuta el archivo <code className="bg-red-100 px-2 py-0.5 rounded">migration_food_module.sql</code> en tu base de datos PostgreSQL</li>
-                    <li>Luego ejecuta <code className="bg-red-100 px-2 py-0.5 rounded">migration_add_area_and_food_fields.sql</code></li>
-                    <li>Recarga la página</li>
-                  </ol>
-                </div>
-              )}
               <div className="mt-4">
                 <button onClick={fetchMenus} className="btn btn-sm btn-primary">
                   Reintentar
@@ -251,7 +333,7 @@ const MenusPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {menus.map((menu) => (
-            <div key={menu.id} className="card p-5 hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div key={menu.id} className="card p-5 hover:shadow-xl transition-all transform hover:-translate-y-1 flex flex-col">
               {/* Header */}
               <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
@@ -278,6 +360,13 @@ const MenusPage = () => {
                   >
                     <Edit className="w-4 h-4" />
                   </button>
+                  <button
+                    onClick={() => handleShare(menu)}
+                    className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                    title="Compartir por WhatsApp"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
                   {/* Providers cannot delete menus */}
                   {user?.role_name !== 'PROVIDER' && (
                     <button
@@ -299,16 +388,10 @@ const MenusPage = () => {
               )}
 
               {/* Options */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Opciones del menú</p>
-                <ul className="space-y-2">
-                  {(Array.isArray(menu.options) ? menu.options : []).map((option, index) => (
-                    <li key={index} className="flex items-center space-x-3 group">
-                      <div className="w-1.5 h-1.5 bg-primary-500 rounded-full group-hover:scale-125 transition-transform"></div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{option}</span>
-                    </li>
-                  ))}
-                </ul>
+              <div className="space-y-3 flex-1">
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 h-full">
+                  {renderMenuOptions(menu.options)}
+                </div>
               </div>
 
               {/* Provider */}
@@ -323,280 +406,20 @@ const MenusPage = () => {
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <MenuModal
-          stationId={station.id}
-          providerId={user.id}
-          menu={editingMenu}
+      {/* New Wizard Modal */}
+      {showWizard && (
+        <MenuWizard
+          stationId={station?.id}
+          providerId={user?.id}
+          menuToEdit={editingMenu}
           onClose={() => {
-            setShowModal(false)
+            setShowWizard(false)
             setEditingMenu(null)
           }}
-          onSuccess={handleModalSuccess}
+          onSuccess={handleWizardSuccess}
         />
       )}
     </div>
-  )
-}
-
-/**
- * Modal para crear/editar menú
- */
-const MenuModal = ({ stationId, providerId, menu, onClose, onSuccess }) => {
-  const isEdit = !!menu
-
-  const [formData, setFormData] = useState({
-    station_id: stationId,
-    provider_id: providerId,
-    serve_date: menu?.serve_date || '',
-    meal_type: menu?.meal_type || MEAL_TYPES.LUNCH,
-    options: menu?.options || [],
-    description: menu?.description || ''
-  })
-  const [newOption, setNewOption] = useState('')
-  const [errors, setErrors] = useState({})
-  const [saving, setSaving] = useState(false)
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }))
-    }
-  }
-
-  const handleAddOption = () => {
-    if (!newOption.trim()) return
-
-    setFormData(prev => ({
-      ...prev,
-      options: [...prev.options, newOption.trim()]
-    }))
-    setNewOption('')
-  }
-
-  const handleRemoveOption = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      options: prev.options.filter((_, i) => i !== index)
-    }))
-  }
-
-  const setQuickDate = (type) => {
-    const date = new Date()
-    if (type === 'tomorrow') {
-      date.setDate(date.getDate() + 1)
-    }
-    setFormData(prev => ({ ...prev, serve_date: date.toISOString().split('T')[0] }))
-  }
-
-  const validateForm = () => {
-    const newErrors = {}
-
-    if (!formData.serve_date) {
-      newErrors.serve_date = 'La fecha es obligatoria'
-    }
-
-    if (formData.options.length === 0) {
-      newErrors.options = 'Debe agregar al menos una opción de menú'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-
-    if (!validateForm()) {
-      return
-    }
-
-    try {
-      setSaving(true)
-
-      if (isEdit) {
-        await menuService.update(menu.id, formData)
-        alert('Menú actualizado correctamente')
-      } else {
-        await menuService.create(formData)
-        alert('Menú creado correctamente')
-      }
-
-      onSuccess()
-    } catch (error) {
-      console.error('Error saving menu:', error)
-      alert(error.message || 'Error al guardar el menú')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="gestor-modal-backdrop">
-      <div className="gestor-modal-content max-w-2xl">
-        <div className="gestor-modal-header">
-          <h3 className="gestor-modal-title">
-            {isEdit ? 'Editar Menú' : 'Nuevo Menú'}
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="gestor-modal-body max-h-[70vh] overflow-y-auto space-y-4">
-            {/* Fecha */}
-            <div>
-              <label htmlFor="serve_date" className="label">
-                Fecha <span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="date"
-                  id="serve_date"
-                  name="serve_date"
-                  value={formData.serve_date}
-                  onChange={handleChange}
-                  className={`input flex-1 ${errors.serve_date ? 'border-red-500' : ''}`}
-                  disabled={saving}
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('today')}
-                  className="btn btn-sm btn-secondary"
-                  disabled={saving}
-                >
-                  Hoy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('tomorrow')}
-                  className="btn btn-sm btn-secondary"
-                  disabled={saving}
-                >
-                  Mañana
-                </button>
-              </div>
-              {errors.serve_date && (
-                <p className="mt-1 text-sm text-red-600">{errors.serve_date}</p>
-              )}
-            </div>
-
-            {/* Tipo de comida */}
-            <div>
-              <label htmlFor="meal_type" className="label">
-                Tipo de Comida <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="meal_type"
-                name="meal_type"
-                value={formData.meal_type}
-                onChange={handleChange}
-                className="input"
-                disabled={saving}
-              >
-                {Object.entries(MEAL_TYPE_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Descripción */}
-            <div>
-              <label htmlFor="description" className="label">
-                Descripción (Opcional)
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                rows="2"
-                className="input"
-                placeholder="Ej: Menú especial de la semana"
-                disabled={saving}
-              />
-            </div>
-
-            {/* Opciones del menú */}
-            <div>
-              <label className="label">
-                Opciones del Menú <span className="text-red-500">*</span>
-              </label>
-
-              {/* Lista de opciones */}
-              {formData.options.length > 0 && (
-                <ul className="space-y-2 mb-3">
-                  {formData.options.map((option, index) => (
-                    <li key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700 group hover:border-primary-200 dark:hover:border-primary-900/40 transition-colors">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-1.5 h-1.5 bg-primary-500 rounded-full"></div>
-                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{option}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveOption(index)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                        disabled={saving}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Agregar nueva opción */}
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={newOption}
-                  onChange={(e) => setNewOption(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddOption())}
-                  className="input flex-1"
-                  placeholder="Ej: Lomo saltado con arroz"
-                  disabled={saving}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddOption}
-                  className="btn btn-secondary btn-md"
-                  disabled={saving}
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </div>
-              {errors.options && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.options}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Botones */}
-          <div className="gestor-modal-footer">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-secondary btn-md"
-              disabled={saving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary btn-md"
-              disabled={saving}
-            >
-              {saving ? 'Guardando...' : (isEdit ? 'Actualizar' : 'Crear Menú')}
-            </button>
-          </div>
-        </form>
-      </div >
-    </div >
   )
 }
 

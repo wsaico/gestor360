@@ -34,7 +34,9 @@ import PublicMenuPage from '@pages/public/PublicMenuPage'
 import FoodOrdersPage from '@pages/alimentacion/FoodOrdersPage'
 import RolePricingPage from '@pages/alimentacion/RolePricingPage'
 import FoodConfigPage from '@pages/alimentacion/FoodConfigPage'
+
 import ReportsPage from '@pages/alimentacion/ReportsPage'
+import AnnouncementsPage from '@pages/alimentacion/AnnouncementsPage' // Import Page
 
 // Módulos de Administración
 import StationsPage from '@pages/admin/StationsPage'
@@ -231,6 +233,16 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]}>
               <FoodConfigPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Anuncios - ADMIN y PROVIDER */}
+        <Route
+          path="alimentacion/comunicados"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER]}>
+              <AnnouncementsPage />
             </ProtectedRoute>
           }
         />

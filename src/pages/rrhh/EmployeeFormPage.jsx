@@ -47,7 +47,9 @@ const EmployeeFormPage = () => {
     uniform_size: 'M',
     phone: '',
     email: '',
-    photo_url: ''
+    photo_url: '',
+    is_visitor: false,
+    visitor_discount_type: 'STANDARD'
   })
 
   useEffect(() => {
@@ -445,6 +447,45 @@ const EmployeeFormPage = () => {
                 <option value="XL">XL</option>
                 <option value="XXL">XXL</option>
               </select>
+            </div>
+
+            {/* Configuración de Visita */}
+            <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex flex-col md:flex-row gap-6">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="is_visitor"
+                  name="is_visitor"
+                  checked={formData.is_visitor}
+                  onChange={(e) => setFormData(prev => ({ ...prev, is_visitor: e.target.checked }))}
+                  className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500 border-gray-300"
+                  disabled={saving}
+                />
+                <label htmlFor="is_visitor" className="ml-2 block text-sm font-bold text-gray-700">
+                  Es Visitante / Externo
+                </label>
+              </div>
+
+              {formData.is_visitor && (
+                <div className="flex-1">
+                  <label htmlFor="visitor_discount_type" className="label">
+                    Tipo de Cobro (Visita)
+                  </label>
+                  <select
+                    id="visitor_discount_type"
+                    name="visitor_discount_type"
+                    value={formData.visitor_discount_type}
+                    onChange={handleChange}
+                    className="input"
+                    disabled={saving}
+                  >
+                    <option value="STANDARD">Estándar (Subsidio Normal)</option>
+                    <option value="NONE">Costo Completo (Sin Descuento)</option>
+                    <option value="COURTESY">Cortesía (Gratis)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Determina si la visita paga el subsidio o el costo total al registrarse en el menú.</p>
+                </div>
+              )}
             </div>
 
             {/* Tipo de Contrato */}

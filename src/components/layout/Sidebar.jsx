@@ -20,7 +20,8 @@ import {
   FileText,
   Clock,
   RefreshCw,
-  Boxes
+  Boxes,
+  Megaphone // Import Megaphone icon
 } from 'lucide-react'
 import { ROLES } from '@utils/constants'
 
@@ -131,6 +132,12 @@ const menuItems = [
         path: '/alimentacion/configuracion',
         icon: Clock,
         roles: [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]
+      },
+      {
+        title: 'Comunicados',
+        path: '/alimentacion/comunicados',
+        icon: Megaphone,
+        roles: [ROLES.ADMIN, ROLES.PROVIDER]
       }
     ]
   },

@@ -86,7 +86,32 @@ class FoodOrderService {
   }
 
   /**
+   * Obtiene los pedidos de un empleado (Versión ligera para web pública)
+   * Evita joins complexes que pueden fallar por RLS
+   */
+  async getPublicOrders(employeeId, startDate, endDate) {
+    try {
+      let query = supabase
+        .from('food_orders')
+        .select('id, menu_date, meal_type, selected_option, status, notes, cost_applied')
+        .eq('employee_id', employeeId)
+        .in('status', ['PENDING', 'CONFIRMED', 'CONSUMED']) // Solo activos
+
+      if (startDate) query = query.gte('menu_date', startDate)
+      if (endDate) query = query.lte('menu_date', endDate)
+
+      const { data, error } = await query
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching public orders:', error)
+      return [] // Fail safe
+    }
+  }
+
+  /**
    * Obtiene los pedidos de un empleado
+
    * @param {string} employeeId - ID del empleado
    * @param {Object} filters - Filtros opcionales { startDate, endDate }
    * @returns {Promise<Array>}
@@ -166,7 +191,8 @@ class FoodOrderService {
 
       if (error) {
         if (error.code === '23505' || error.message.includes('unique')) {
-          throw new Error('Ya realizaste un pedido de este tipo para esta fecha.')
+          // Check if we can give more detail
+          throw new Error(`Ya existe un pedido ${orderData.order_type || 'NORMAL'} para esta fecha.`)
         }
         throw new Error(error.message || 'Error al crear el pedido')
       }

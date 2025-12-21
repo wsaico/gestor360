@@ -265,13 +265,17 @@ export const MEAL_TYPE_LABELS = {
 // Tipos de pedido
 export const ORDER_TYPES = {
   NORMAL: 'NORMAL',
-  SPECIAL: 'ESPECIAL'
+  SPECIAL: 'SPECIAL', // Alias for Visitor/Manual with cost
+  VISITOR: 'VISITOR', // Explicit visitor
+  MANUAL: 'MANUAL'    // Admin correction
 }
 
 // Labels para tipos de pedido
 export const ORDER_TYPE_LABELS = {
   NORMAL: 'Normal',
-  ESPECIAL: 'Especial (con descuento)'
+  SPECIAL: 'Especial (Costo Total)',
+  VISITOR: 'Visita',
+  MANUAL: 'Regularización Manual'
 }
 
 // Umbrales para el semáforo de EPPs (días)

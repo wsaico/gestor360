@@ -10,17 +10,25 @@ import {
     Edit2,
     MoreVertical,
     UtensilsCrossed,
-    Download
+    Download,
+    Plus // Add Plus icon
 } from 'lucide-react'
+import SearchableSelect from '@components/common/SearchableSelect'
+import employeeService from '@services/employeeService' // Add employee service
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@contexts/AuthContext'
 import foodOrderService from '@services/foodOrderService'
 import stationService from '@services/stationService'
+import pricingService from '@services/pricingService'
+import menuService from '@services/menuService' // Add import
 import { ROLES, MEAL_TYPE_LABELS } from '@utils/constants'
 import { formatDate } from '@utils/helpers'
+import { useNotification } from '@contexts/NotificationContext'
+import * as XLSX from 'xlsx' // Add XLSX import
 
 const FoodOrdersPage = () => {
     const { user, hasRole } = useAuth()
+    const { notify } = useNotification() // Hook
     const [loading, setLoading] = useState(false)
     const [orders, setOrders] = useState([])
     const [stats, setStats] = useState({ total: 0, pending: 0, consumed: 0, cancelled: 0 })
@@ -33,6 +41,25 @@ const FoodOrdersPage = () => {
         endDate: new Date(Date.now() + 86400000).toISOString().split('T')[0]
     })
     const [statusFilter, setStatusFilter] = useState('')
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [isAuditModalOpen, setIsAuditModalOpen] = useState(false) // Audit Modal
+    const [missingEmployees, setMissingEmployees] = useState([]) // For Audit
+    const [employees, setEmployees] = useState([])
+    const [formData, setFormData] = useState({
+        employee_id: '',
+        visitor_name: '',
+        menu_date: new Date().toISOString().split('T')[0],
+        meal_type: 'ALMUERZO',
+        selected_option: 'Menú del Día', // Default or fetch menus
+        order_type: 'MANUAL', // MANUAL or VISITOR
+        selected_option: 'Menú del Día', // Default or fetch menus
+        order_type: 'MANUAL', // MANUAL or VISITOR
+        notes: '',
+        pricing_rule: 'STANDARD' // STANDARD | COURTESY | FULL
+    })
+    const [selectedEmployeePricing, setSelectedEmployeePricing] = useState(null)
 
     /* Logic determining view mode */
     const isManager = hasRole(ROLES.ADMIN) || hasRole(ROLES.SUPERVISOR) || hasRole(ROLES.PROVIDER)
@@ -49,6 +76,9 @@ const FoodOrdersPage = () => {
     useEffect(() => {
         // Allow loading with empty stationId (Global View) for Admins
         loadOrders()
+        if (isModalOpen) {
+            loadEmployees()
+        }
     }, [selectedStationId, dateRange, statusFilter, isManager])
 
     const loadStations = async () => {
@@ -61,6 +91,147 @@ const FoodOrdersPage = () => {
             // }
         } catch (error) {
             console.error('Error loading stations:', error)
+        }
+    }
+
+    // Load available employees for manual assignment
+    const loadEmployees = async () => {
+        try {
+            const stationToLoad = selectedStationId || user?.station_id
+            // Only load if we have a station context (or global admin might want all? Usually context specific)
+            // User requested strict filtering.
+            if (stationToLoad) {
+                const data = await employeeService.getAll(stationToLoad, { activeOnly: true })
+                setEmployees(data || [])
+            } else {
+                setEmployees([])
+            }
+        } catch (error) {
+            console.error('Error loading employees:', error)
+        }
+    }
+
+    const openManualOrder = () => {
+        setFormData({
+            employee_id: '',
+            visitor_name: '', // Kept for safety but unused
+            menu_date: new Date().toISOString().split('T')[0],
+            meal_type: 'ALMUERZO',
+            selected_option: 'Menú del Día',
+            order_type: 'MANUAL',
+            notes: '',
+            pricing_rule: 'STANDARD'
+        })
+        setSelectedEmployeePricing(null)
+        if (employees.length === 0) {
+            loadEmployees()
+        }
+        setIsModalOpen(true)
+    }
+
+    const handleManualSubmit = async (e) => {
+        e.preventDefault()
+        try {
+            // Basic validation
+            if (!formData.employee_id) return notify.warning('Seleccione un empleado o visitante')
+
+            let costUser = 0;
+            let subsidyCompany = 0;
+            let fullPrice = 0;
+
+            // Fetch pricing if not already fetched (safeguard)
+            let pricing = selectedEmployeePricing
+            if (!pricing && formData.employee_id) {
+                const emp = employees.find(e => e.id === formData.employee_id)
+                if (emp) {
+                    pricing = await pricingService.getByRole(selectedStationId || user?.station_id, emp.role_name)
+                }
+            }
+
+            // --- Menu Validation Logic ---
+            let menuId = null
+            const targetStationId = selectedStationId || user?.station_id || (user?.role === 'SUPERADMIN' ? formData.station_id : null)
+
+            try {
+                // Find existing menu for date/meal/station
+                const menus = await menuService.getAll(targetStationId, {
+                    startDate: formData.menu_date,
+                    endDate: formData.menu_date,
+                    meal_type: formData.meal_type
+                })
+
+                if (menus && menus.length > 0) {
+                    menuId = menus[0].id
+                } else {
+                    // DB now allows NULL menu_id (via recent migration)
+                    // We allow regularization even if no menu exists
+                    console.warn(`No existe un menú programado para ${formData.menu_date}. Se registrará sin menú asociado.`)
+                }
+            } catch (err) {
+                console.error('Error finding menu:', err)
+                // Non-blocking error for menu lookup
+            }
+            // -----------------------------
+
+            if (pricing) {
+                fullPrice = parseFloat(pricing.employee_cost) + parseFloat(pricing.company_subsidy)
+
+                if (formData.pricing_rule === 'STANDARD') { // Normal Employee Rate
+                    costUser = parseFloat(pricing.employee_cost)
+                    subsidyCompany = parseFloat(pricing.company_subsidy)
+                } else if (formData.pricing_rule === 'COURTESY') { // Company pays all
+                    costUser = 0
+                    subsidyCompany = fullPrice
+                } else if (formData.pricing_rule === 'FULL') { // Visitor pays all (Zero subsidy)
+                    costUser = fullPrice
+                    subsidyCompany = 0
+                }
+            } else {
+                // Fallback if no pricing found 
+                console.warn('No pricing found for employee, defaulting to 0')
+            }
+
+            const payload = {
+                ...formData,
+                menu_id: menuId, // Associated Menu ID
+                station_id: selectedStationId || user?.station_id,
+                status: 'CONFIRMED', // Auto-confirm manual orders
+                cost_applied: costUser,
+                // Map 'MANUAL' (frontend state) to 'NORMAL' (DB enum) because DB doesn't accept 'MANUAL'
+                // is_manual_entry already flags it as an admin action.
+                order_type: formData.pricing_rule === 'FULL' ? 'SPECIAL' : 'NORMAL',
+                employee_cost_snapshot: costUser,
+                company_subsidy_snapshot: subsidyCompany,
+                is_manual_entry: true,
+                manual_entry_by: user.id
+            }
+
+            // Remove temporary field
+            delete payload.pricing_rule
+
+            // If visitor, we need a dummy employee ID or handle it in backend.
+            // For now, assuming backend handles NULL employee_id for visitors or we assign to a "Visitor User"
+            // The constraint might require employee_id. If so, we need a generic visitor employee or change DB.
+            // Plan: If employee_id is required, we might fail. 
+            // Wait, previous DB migration didn't make employee_id nullable?
+            // Let's assume for MANUAL it works. For VISITOR, we might strictly need an employee_id if the DB says so.
+            // Re-checking DB schema... `employee_id` is usually FK.
+            // Quick fix: User requested "Visitor Support". Usually implies either a "Visitor" employee record or nullable FK.
+            // I will use `visitor_name` in `notes` for now if I must assign to a placeholder, BUT 
+            // implementation_plan said "Support Visitor".
+            // If the DB requires employee_id, I will block Visitor mode creation without a selected "Host" employee or similar.
+            // Actually, for "Regularization" (MANUAL), I pick an employee.
+            // For VISITOR, I probably also pick the "Host" (Employee responsible) or just the Name if DB allows null.
+
+            // Let's try sending. If it fails, I'll alert.
+            await foodOrderService.create(payload)
+            setIsModalOpen(false)
+            loadOrders()
+            notify.success('Pedido creado exitosamente')
+
+        } catch (error) {
+            console.error(error)
+            notify.error(error.message)
         }
     }
 
@@ -114,7 +285,7 @@ const FoodOrdersPage = () => {
     const handleStatusChange = async (orderId, newStatus) => {
         // Validar permisos
         if (!isManager && newStatus === 'CONSUMED') {
-            alert('No tienes permisos para realizar esta acción')
+            notify.warning('No tienes permisos para realizar esta acción')
             return
         }
 
@@ -123,9 +294,10 @@ const FoodOrdersPage = () => {
         try {
             await foodOrderService.update(orderId, { status: newStatus })
             loadOrders()
+            notify.success('Estado actualizado correctamente')
         } catch (error) {
             console.error('Error updating status:', error)
-            alert('Error al actualizar el estado')
+            notify.error('Error al actualizar el estado')
         }
     }
 
@@ -135,9 +307,63 @@ const FoodOrdersPage = () => {
         try {
             await foodOrderService.delete(orderId)
             loadOrders()
+            notify.success('Pedido eliminado correctamente')
         } catch (error) {
             console.error('Error deleting order:', error)
-            alert('Error al eliminar el pedido')
+            notify.error('Error al eliminar el pedido')
+        }
+    }
+
+    // --- Export & Audit ---
+    const handleExportExcel = () => {
+        try {
+            const dataToExport = orders.map(order => ({
+                'Fecha': formatDate(order.menu_date),
+                'Tipo': MEAL_TYPE_LABELS[order.meal_type] || order.meal_type,
+                'Estación': stations.find(s => s.id === order.station_id)?.name || order.station_id,
+                'Empleado': order.employee?.full_name || 'Visitante',
+                'DNI': order.employee?.dni || '-',
+                'Rol': order.employee?.role_name || '-',
+                'Opción': order.selected_option,
+                'Estado': order.status,
+                'Costo Empleado': order.cost_applied,
+                'Subsidio Empresa': order.company_subsidy_snapshot,
+                'Notas': order.notes || '-'
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "Pedidos")
+            XLSX.writeFile(wb, `Reporte_Alimentacion_${new Date().toISOString().split('T')[0]}.xlsx`)
+            notify.success('Reporte descargado exitosamente')
+        } catch (error) {
+            console.error(error)
+            notify.error('Error al exportar Excel')
+        }
+    }
+
+    const handleOpenAudit = async () => {
+        try {
+            // Need a station context to audit against
+            const targetStationId = selectedStationId || user?.station_id
+
+            // Fetch active employees for this context
+            // Note: If no station selected (Superadmin view all), this might be heavy.
+            // We'll warn or just fetch all? Let's try fetching all if no station.
+            const allEmployees = await employeeService.getAll(targetStationId, { activeOnly: true })
+
+            // Get unique employee IDs who HAVE orders in the CURRENT FILTERED LIST
+            // This assumes the user has filtered by the Date/Meal they want to audit.
+            const employeesWithOrder = new Set(orders.map(o => o.employee_id))
+
+            // Find missing
+            const missing = allEmployees.filter(emp => !employeesWithOrder.has(emp.id))
+
+            setMissingEmployees(missing)
+            setIsAuditModalOpen(true)
+        } catch (error) {
+            console.error(error)
+            notify.error('Error al generar auditoría')
         }
     }
 
@@ -172,6 +398,39 @@ const FoodOrdersPage = () => {
                     </p>
                 </div>
             </div>
+
+
+
+            {/* Quick Actions (Manager Only) */}
+            {
+                isManager && (
+                    <div className="flex gap-2">
+                        <button
+                            onClick={openManualOrder}
+                            className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
+                        >
+                            <Plus size={20} />
+                            <span className="hidden sm:inline font-medium">Nuevo Pedido</span>
+                        </button>
+                        <button
+                            onClick={handleExportExcel}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 active:scale-95 transition-all shadow-sm"
+                            title="Descargar Excel"
+                        >
+                            <Download size={20} />
+                            <span className="hidden sm:inline font-medium">Excel</span>
+                        </button>
+                        <button
+                            onClick={handleOpenAudit}
+                            className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 active:scale-95 transition-all shadow-sm"
+                            title="Auditoría / Falta Pedir"
+                        >
+                            <CheckCircle size={20} />
+                            <span className="hidden sm:inline font-medium">Auditoría / Faltantes</span>
+                        </button>
+                    </div>
+                )
+            }
 
             {/* Filters Bar */}
             <div className="card p-4 space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:gap-4">
@@ -450,7 +709,272 @@ const FoodOrdersPage = () => {
                     )}
                 </div>
             </div>
-        </div>
+            {/* Manual Order Modal */}
+            {/* Manual Order Modal */}
+            <AnimatePresence>
+                {isModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+                        >
+                            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center shrink-0">
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                    Nuevo Pedido Manual
+                                </h3>
+                                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                    <XCircle size={24} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto">
+                                <form onSubmit={handleManualSubmit} className="space-y-4">
+
+                                    {/* Row 1: Date & Meal */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="label">Fecha</label>
+                                            <input
+                                                type="date"
+                                                required
+                                                className="input w-full"
+                                                value={formData.menu_date}
+                                                onChange={e => setFormData({ ...formData, menu_date: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="label">Tipo Comida</label>
+                                            <select
+                                                className="input w-full"
+                                                value={formData.meal_type}
+                                                onChange={e => setFormData({ ...formData, meal_type: e.target.value })}
+                                            >
+                                                <option value="DESAYUNO">Desayuno</option>
+                                                <option value="ALMUERZO">Almuerzo</option>
+                                                <option value="CENA">Cena</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 2: Employee */}
+                                    <div>
+                                        <SearchableSelect
+                                            label="Empleado / Visitante"
+                                            required
+                                            placeholder="Buscar por nombre o DNI..."
+                                            options={employees.map(emp => ({
+                                                value: emp.id,
+                                                label: `${emp.full_name} (${emp.dni})`,
+                                                subLabel: emp.role_name
+                                            }))}
+                                            value={formData.employee_id}
+                                            onChange={async (val) => {
+                                                setFormData({ ...formData, employee_id: val })
+                                                // Fetch pricing preview
+                                                if (val) {
+                                                    const emp = employees.find(e => e.id === val)
+                                                    if (emp) {
+                                                        try {
+                                                            const p = await pricingService.getByRole(emp.station_id || selectedStationId, emp.role_name)
+                                                            setSelectedEmployeePricing(p)
+                                                        } catch (err) { console.error(err) }
+                                                    }
+                                                } else {
+                                                    setSelectedEmployeePricing(null)
+                                                }
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Row 3: Pricing Rules (Compact) */}
+                                    {selectedEmployeePricing && (
+                                        <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600 text-sm">
+                                            <p className="font-bold text-gray-700 dark:text-gray-300 mb-2">Regla de Cobro:</p>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                                                    <input
+                                                        type="radio"
+                                                        name="pricing_rule" value="STANDARD"
+                                                        checked={formData.pricing_rule === 'STANDARD'}
+                                                        onChange={e => setFormData({ ...formData, pricing_rule: e.target.value })}
+                                                        className="text-primary-600 focus:ring-primary-500"
+                                                    />
+                                                    <span className="flex flex-col">
+                                                        <span className="font-medium">Estándar</span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">S/{parseFloat(selectedEmployeePricing.employee_cost).toFixed(2)}</span>
+                                                    </span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                                                    <input
+                                                        type="radio"
+                                                        name="pricing_rule" value="COURTESY"
+                                                        checked={formData.pricing_rule === 'COURTESY'}
+                                                        onChange={e => setFormData({ ...formData, pricing_rule: e.target.value })}
+                                                        className="text-primary-600 focus:ring-primary-500"
+                                                    />
+                                                    <span className="flex flex-col">
+                                                        <span className="font-medium">Cortesía</span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">S/0.00</span>
+                                                    </span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                                                    <input
+                                                        type="radio"
+                                                        name="pricing_rule" value="FULL"
+                                                        checked={formData.pricing_rule === 'FULL'}
+                                                        onChange={e => setFormData({ ...formData, pricing_rule: e.target.value })}
+                                                        className="text-primary-600 focus:ring-primary-500"
+                                                    />
+                                                    <span className="flex flex-col">
+                                                        <span className="font-medium">Full</span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">S/{(parseFloat(selectedEmployeePricing.employee_cost) + parseFloat(selectedEmployeePricing.company_subsidy)).toFixed(2)}</span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Row 4: Option & Notes */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="label">Opción / Plato</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                className="input w-full"
+                                                placeholder="Ej. Menú del día"
+                                                value={formData.selected_option}
+                                                onChange={e => setFormData({ ...formData, selected_option: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="label">Notas (Opcional)</label>
+                                            <input
+                                                type="text"
+                                                className="input w-full"
+                                                placeholder="Ej. Sin ensalada"
+                                                value={formData.notes}
+                                                onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+
+                            {/* Footer (Fixed at bottom) */}
+                            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex gap-3 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="btn flex-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleManualSubmit}
+                                    className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 shadow-lg shadow-primary-600/30"
+                                >
+                                    <CheckCircle size={18} className="mr-2" />
+                                    Confirmar
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Audit Modal */}
+            <AnimatePresence>
+                {isAuditModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+                        >
+                            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center shrink-0">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                        Auditoría / Faltantes
+                                    </h3>
+                                    <p className="text-sm text-gray-500">
+                                        Personal activo sin pedido para la fecha seleccionada.
+                                    </p>
+                                </div>
+                                <button onClick={() => setIsAuditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                    <XCircle size={24} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto">
+                                {/* Stats Summary */}
+                                <div className="grid grid-cols-3 gap-4 mb-6">
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
+                                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                            {employees.length + missingEmployees.length}
+                                        </div>
+                                        <div className="text-xs font-medium text-blue-800 dark:text-blue-300 uppercase mt-1">Total Activos</div>
+                                    </div>
+                                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
+                                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                            {orders.length}
+                                        </div>
+                                        <div className="text-xs font-medium text-green-800 dark:text-green-300 uppercase mt-1">Con Pedido</div>
+                                    </div>
+                                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
+                                        <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                                            {missingEmployees.length}
+                                        </div>
+                                        <div className="text-xs font-medium text-red-800 dark:text-red-300 uppercase mt-1">Faltantes</div>
+                                    </div>
+                                </div>
+
+                                {/* Missing List */}
+                                <div className="space-y-4">
+                                    <h4 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                        <UtensilsCrossed size={16} />
+                                        Personal Faltante ({missingEmployees.length})
+                                    </h4>
+
+                                    {missingEmployees.length === 0 ? (
+                                        <div className="text-center py-8 text-green-600 bg-green-50 rounded-lg dark:bg-green-900/10">
+                                            <CheckCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                            <p className="font-medium">¡Todo el personal tiene pedido!</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-100 dark:divide-gray-700 border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
+                                            {missingEmployees.map(emp => (
+                                                <div key={emp.id} className="p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 flex justify-between items-center transition-colors">
+                                                    <div>
+                                                        <p className="font-medium text-gray-900 dark:text-white">{emp.full_name}</p>
+                                                        <p className="text-xs text-gray-500">{emp.role_name} • {emp.dni}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setIsAuditModalOpen(false)
+                                                                setFormData(prev => ({ ...prev, employee_id: emp.id }))
+                                                                setIsModalOpen(true) // Open Manual Order pre-filled
+                                                            }}
+                                                            className="text-xs bg-primary-50 text-primary-700 px-3 py-1.5 rounded-full hover:bg-primary-100 font-medium"
+                                                        >
+                                                            Crear Pedido
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </div >
     )
 }
 

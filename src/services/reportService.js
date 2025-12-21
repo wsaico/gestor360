@@ -386,6 +386,103 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
 }
 
 /**
+ * Genera el Reporte de Auditoría (Pedidos Faltantes)
+ * Lista empleados activos que NO tienen pedido para cada fecha del rango seleccionado.
+ * @param {string} stationId - ID de la estación
+ * @param {string} startDate - Fecha inicial
+ * @param {string} endDate - Fecha final
+ * @param {string} stationName - Nombre de la estación
+ * @returns {Blob} Archivo Excel
+ */
+export const generateMissingOrdersReport = async (stationId, startDate, endDate, stationName) => {
+  try {
+    // 1. Obtener todos los empleados activos de la estación
+    const { data: employees, error: empError } = await supabase
+      .from('employees')
+      .select('id, dni, full_name, role_name, area')
+      .eq('station_id', stationId)
+      .neq('status', 'CESADO')
+      .order('full_name')
+
+    if (empError) throw empError
+    if (!employees || employees.length === 0) throw new Error('No hay empleados activos en esta estación')
+
+    // 2. Obtener todos los pedidos en el rango
+    const orders = await getOrdersForReport(stationId, startDate, endDate)
+
+    // 3. Generar rango de fechas
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const dates = []
+
+    // Iterar día por día
+    for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+      dates.push(new Date(dt).toISOString().split('T')[0])
+    }
+
+    const missingRows = []
+
+    // 4. Cruzar información
+    dates.forEach(dateStr => {
+      // Pedidos para esta fecha
+      const dateOrders = orders.filter(o => o.menu_date === dateStr)
+      const employeesWithOrder = new Set(dateOrders.map(o => o.employee.dni))
+
+      // Check cada empleado
+      employees.forEach(emp => {
+        if (!employeesWithOrder.has(emp.dni)) {
+          missingRows.push([
+            formatDate(dateStr),
+            emp.dni,
+            emp.full_name,
+            emp.area || 'N/A',
+            emp.role_name
+          ])
+        }
+      })
+    })
+
+    if (missingRows.length === 0) {
+      throw new Error('¡Excelente! Todos los empleados tienen pedido para las fechas seleccionadas.')
+    }
+
+    // 5. Generar Excel
+    const wb = XLSX.utils.book_new()
+    const headers = ['FECHA', 'DNI', 'NOMBRES', 'AREA', 'CARGO']
+
+    const wsData = [
+      [[`REPORTE DE AUDITORÍA - EMPLEADOS SIN PEDIDO`]],
+      [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]],
+      [['']],
+      headers,
+      ...missingRows
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+    ws['!cols'] = [
+      { wch: 15 }, // FECHA
+      { wch: 12 }, // DNI
+      { wch: 35 }, // NOMBRES
+      { wch: 20 }, // AREA
+      { wch: 25 }, // CARGO
+    ]
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Faltantes')
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
+  } catch (error) {
+    console.error('Error generating missing orders report:', error)
+    throw error
+  }
+}
+
+/**
  * Descarga un blob como archivo
  * @param {Blob} blob - Archivo blob
  * @param {string} filename - Nombre del archivo
@@ -405,5 +502,6 @@ export const downloadBlob = (blob, filename) => {
 export default {
   generateDiscountReport,
   generateBillingReport,
-  downloadBlob
+  downloadBlob,
+  generateMissingOrdersReport
 }
