@@ -4,7 +4,10 @@ import supabase from '@services/supabase'
 import { useAuth } from '@contexts/AuthContext'
 import employeeService from '@services/employeeService'
 import jobRoleService from '@services/jobRoleService'
+import stationService from '@services/stationService'
 import ConfirmDialog from '@components/ConfirmDialog'
+import Modal from '@components/Modal'
+import EmployeeForm from '@components/rrhh/EmployeeForm'
 import * as XLSX from 'xlsx'
 import {
   Plus,
@@ -32,9 +35,12 @@ import { formatDate } from '@utils/helpers'
  */
 const EmployeesPage = () => {
   const navigate = useNavigate()
-  const { station } = useAuth()
+  const { user, station } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
 
   const [employees, setEmployees] = useState([])
+  const [stations, setStations] = useState([])
+  const [selectedStationId, setSelectedStationId] = useState('') // Filter value
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -49,11 +55,22 @@ const EmployeesPage = () => {
   const [showPermanentDeleteDialog, setShowPermanentDeleteDialog] = useState(false)
   const [employeeToDeletePermanently, setEmployeeToDeletePermanently] = useState(null)
 
+  // Modal State
+  const [showModal, setShowModal] = useState(false)
+  const [selectedEmployee, setSelectedEmployee] = useState(null)
+
   const fileInputRef = useRef(null)
 
   useEffect(() => {
     fetchEmployees()
-  }, [statusFilter, currentPage]) // Re-fetch on filter or page change
+  }, [statusFilter, currentPage, selectedStationId]) // Re-fetch on filter or page change
+
+  // Fetch stations for filter if Admin
+  useEffect(() => {
+    if (isAdmin) {
+      stationService.getAll().then(setStations).catch(console.error)
+    }
+  }, [isAdmin])
 
   // Debounce search
   useEffect(() => {
@@ -386,7 +403,10 @@ const EmployeesPage = () => {
             <span className="hidden sm:inline">Reparar</span>
           </button>
           <button
-            onClick={() => navigate('/rrhh/empleados/nuevo')}
+            onClick={() => {
+              setSelectedEmployee(null)
+              setShowModal(true)
+            }}
             className="btn btn-primary btn-md inline-flex items-center space-x-2"
           >
             <Plus className="w-4 h-4" />
@@ -412,6 +432,26 @@ const EmployeesPage = () => {
 
           {/* Filtro por estado */}
           <div className="flex items-center space-x-4">
+
+            {/* Station Filter (Admin Only) */}
+            {isAdmin && (
+              <div className="flex items-center space-x-2">
+                <select
+                  value={selectedStationId}
+                  onChange={(e) => {
+                    setSelectedStationId(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="input w-auto max-w-xs"
+                >
+                  <option value="">Todas las Estaciones</option>
+                  {stations.map(s => (
+                    <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="flex items-center space-x-2">
               <Filter className="w-5 h-5 text-gray-400" />
               <select
@@ -504,7 +544,7 @@ const EmployeesPage = () => {
                 <th className="gestor-th">
                   Estado
                 </th>
-                <th className="gestor-th text-right">
+                <th className="gestor-th text-right sticky right-0 z-10 bg-gray-50 dark:bg-gray-800 shadow-[-5px_0_5px_-5px_rgba(0,0,0,0.1)]">
                   Acciones
                 </th>
               </tr>
@@ -570,7 +610,7 @@ const EmployeesPage = () => {
                         <span className="badge badge-danger">Cesado</span>
                       )}
                     </td>
-                    <td className="gestor-td text-right font-medium">
+                    <td className="gestor-td text-right font-medium sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-[-5px_0_5px_-5px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-gray-800">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => navigate(`/rrhh/empleados/${employee.id}`)}
@@ -580,7 +620,10 @@ const EmployeesPage = () => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => navigate(`/rrhh/empleados/${employee.id}/editar`)}
+                          onClick={() => {
+                            setSelectedEmployee(employee)
+                            setShowModal(true)
+                          }}
                           className="text-yellow-600 hover:text-yellow-900"
                           title="Editar"
                         >
@@ -660,8 +703,8 @@ const EmployeesPage = () => {
                     onClick={() => setCurrentPage(p)}
                     aria-current={currentPage === p ? 'page' : undefined}
                     className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${currentPage === p
-                        ? 'bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
-                        : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-offset-0'
+                      ? 'bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                      : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-offset-0'
                       }`}
                   >
                     {p}
@@ -705,6 +748,23 @@ const EmployeesPage = () => {
         onConfirm={handleConfirmPermanentDelete}
         onCancel={handleCancelPermanentDelete}
       />
+
+      {/* Modal de Creación/Edición */}
+      <Modal
+        isOpen={showModal}
+        title={selectedEmployee ? 'Editar Empleado' : 'Nuevo Empleado'}
+        onClose={() => setShowModal(false)}
+        maxWidth="max-w-4xl"
+      >
+        <EmployeeForm
+          employee={selectedEmployee}
+          onSuccess={() => {
+            setShowModal(false)
+            fetchEmployees()
+          }}
+          onCancel={() => setShowModal(false)}
+        />
+      </Modal>
     </div >
   )
 }

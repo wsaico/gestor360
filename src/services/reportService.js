@@ -1,22 +1,74 @@
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import { supabase } from './supabase'
 import { formatDate } from '@utils/helpers'
+import { parseISO, format } from 'date-fns'
 
 /**
- * Servicio para generar reportes de alimentación en formato Excel
- * Genera 2 tipos de reportes:
- * 1. Reporte de Descuento Comedor (consolidado por rango de fechas)
- * 2. Reporte de Facturación (3 pestañas: 25% Empleado, 75% Empresa, Resumen)
+ * Servicio para generar reportes de alimentación en formato Excel con Estilos Profesionales
  */
 
-const IGV_RATE = 0.18 // 18% IGV
+const IGV_RATE = 0.18
+
+// ==========================================
+// CONFIGURACIÓN DE ESTILOS PROFESIONALES
+// ==========================================
+const STYLE_HEADER = {
+  fill: { fgColor: { rgb: "1E3A8A" } }, // Azul Oscuro Corporativo
+  font: { color: { rgb: "FFFFFF" }, bold: true, sz: 11 },
+  alignment: { horizontal: "center", vertical: "center", wrapText: true },
+  border: {
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } }
+  }
+}
+
+const STYLE_CELL = {
+  border: {
+    top: { style: "thin", color: { rgb: "D1D5DB" } },
+    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+    left: { style: "thin", color: { rgb: "D1D5DB" } },
+    right: { style: "thin", color: { rgb: "D1D5DB" } }
+  },
+  alignment: { vertical: "center" },
+  font: { sz: 10 }
+}
+
+const STYLE_CELL_CENTER = {
+  ...STYLE_CELL,
+  alignment: { horizontal: "center", vertical: "center" }
+}
+
+const STYLE_TITLE = {
+  font: { bold: true, sz: 14, color: { rgb: "111827" } },
+  alignment: { horizontal: "left", vertical: "center" }
+}
+
+const STYLE_SUBTITLE = {
+  font: { sz: 11, color: { rgb: "4B5563" } },
+  alignment: { horizontal: "left", vertical: "center" }
+}
+
+const STYLE_SECONDARY_BG = {
+  ...STYLE_CELL_CENTER,
+  fill: { fgColor: { rgb: "F3F4F6" } }, // Gris Claro para Totales/Resumen
+  font: { bold: true, sz: 10 }
+}
+
+const STYLE_TOTAL_FINAL = {
+  ...STYLE_HEADER,
+  font: { ...STYLE_HEADER.font, sz: 11 },
+  fill: { fgColor: { rgb: "111827" } } // Negro para el total final
+}
+
+/**
+ * Helper para crear una celda con valor y estilo
+ */
+const createCell = (value, style = STYLE_CELL) => ({ v: value, s: style })
 
 /**
  * Obtiene datos de pedidos para reportes
- * @param {string} stationId - ID de la estación
- * @param {string} startDate - Fecha inicial (YYYY-MM-DD)
- * @param {string} endDate - Fecha final (YYYY-MM-DD)
- * @returns {Promise<Array>} Lista de pedidos con información del empleado
  */
 const getOrdersForReport = async (stationId, startDate, endDate) => {
   try {
@@ -39,16 +91,10 @@ const getOrdersForReport = async (stationId, startDate, endDate) => {
       .in('status', ['CONFIRMED', 'CONSUMED', 'PENDING'])
       .order('menu_date', { ascending: true })
 
-    if (startDate) {
-      query = query.gte('menu_date', startDate)
-    }
-
-    if (endDate) {
-      query = query.lte('menu_date', endDate)
-    }
+    if (startDate) query = query.gte('menu_date', startDate)
+    if (endDate) query = query.lte('menu_date', endDate)
 
     const { data, error } = await query
-
     if (error) throw error
     return data || []
   } catch (error) {
@@ -59,30 +105,17 @@ const getOrdersForReport = async (stationId, startDate, endDate) => {
 
 /**
  * Genera el Reporte de Descuento Comedor
- * Formato: Por empleado con columnas de fechas y descuentos diarios
- * @param {string} stationId - ID de la estación
- * @param {string} startDate - Fecha inicial
- * @param {string} endDate - Fecha final
- * @param {string} stationName - Nombre de la estación
- * @returns {Blob} Archivo Excel
  */
 export const generateDiscountReport = async (stationId, startDate, endDate, stationName) => {
   try {
     const orders = await getOrdersForReport(stationId, startDate, endDate)
+    if (orders.length === 0) throw new Error('No hay pedidos para generar el reporte')
 
-    if (orders.length === 0) {
-      throw new Error('No hay pedidos para generar el reporte')
-    }
-
-    // Obtener todas las fechas únicas en el rango
     const uniqueDates = [...new Set(orders.map(o => o.menu_date))].sort()
-
-    // Agrupar por empleado
     const employeeMap = new Map()
 
     orders.forEach(order => {
       const empKey = order.employee.dni
-
       if (!employeeMap.has(empKey)) {
         employeeMap.set(empKey, {
           dni: order.employee.dni,
@@ -92,90 +125,69 @@ export const generateDiscountReport = async (stationId, startDate, endDate, stat
           dateAmounts: {}
         })
       }
-
       const emp = employeeMap.get(empKey)
       const dateKey = order.menu_date
-
-      // Acumular el descuento del empleado para esa fecha
-      if (!emp.dateAmounts[dateKey]) {
-        emp.dateAmounts[dateKey] = 0
-      }
+      if (!emp.dateAmounts[dateKey]) emp.dateAmounts[dateKey] = 0
       emp.dateAmounts[dateKey] += Number(order.employee_cost_snapshot || 0)
     })
 
-    // Construir datos para Excel
     const employees = Array.from(employeeMap.values()).sort((a, b) =>
       a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
     )
 
     // Headers
-    const headers = ['ITEM', 'DNI', 'NOMBRES', 'AREA', 'CARGO']
-    uniqueDates.forEach(date => {
-      headers.push(formatDate(date))
-    })
-    headers.push('TOTAL')
+    const headerRow = [
+      createCell('ITEM', STYLE_HEADER),
+      createCell('DNI', STYLE_HEADER),
+      createCell('NOMBRES', STYLE_HEADER),
+      createCell('AREA', STYLE_HEADER),
+      createCell('CARGO', STYLE_HEADER),
+      ...uniqueDates.map(date => createCell(formatDate(date, 'd'), STYLE_HEADER)),
+      createCell('TOTAL', STYLE_HEADER)
+    ]
 
-    // Construir filas
+    // Filas de datos
     const rows = employees.map((emp, index) => {
       const row = [
-        index + 1,
-        emp.dni,
-        emp.fullName,
-        emp.area,
-        emp.role
+        createCell(index + 1, STYLE_CELL_CENTER),
+        createCell(emp.dni, STYLE_CELL_CENTER),
+        createCell(emp.fullName, STYLE_CELL),
+        createCell(emp.area, STYLE_CELL_CENTER),
+        createCell(emp.role, STYLE_CELL)
       ]
 
       let total = 0
       uniqueDates.forEach(date => {
         const amount = emp.dateAmounts[date] || 0
-        row.push(amount > 0 ? amount.toFixed(2) : '')
+        row.push(createCell(amount > 0 ? amount.toFixed(2) : '', STYLE_CELL_CENTER))
         total += amount
       })
 
-      row.push(total.toFixed(2))
+      row.push(createCell(total.toFixed(2), STYLE_SECONDARY_BG))
       return row
     })
 
-    // Crear workbook
     const wb = XLSX.utils.book_new()
-
-    // Título y metadata
-    const titleRow = [[`CONTROL DE ALIMENTACIÓN PERSONAL - DESCUENTO COMEDOR`]]
-    const metaRow = [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]]
-    const emptyRow = [['']]
-
     const wsData = [
-      ...titleRow,
-      ...metaRow,
-      ...emptyRow,
-      headers,
+      [createCell('CONTROL DE ALIMENTACIÓN PERSONAL - DESCUENTO COMEDOR', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      headerRow,
       ...rows
     ]
 
     const ws = XLSX.utils.aoa_to_sheet(wsData)
-
-    // Ajustar anchos de columna
-    const colWidths = [
-      { wch: 6 },  // ITEM
-      { wch: 12 }, // DNI
-      { wch: 35 }, // NOMBRES
-      { wch: 15 }, // AREA
-      { wch: 30 }, // CARGO
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 12 }, { wch: 35 }, { wch: 15 }, { wch: 30 },
+      ...uniqueDates.map(() => ({ wch: 5 })),
+      { wch: 12 }
     ]
-    uniqueDates.forEach(() => colWidths.push({ wch: 12 })) // Fechas
-    colWidths.push({ wch: 12 }) // TOTAL
-
-    ws['!cols'] = colWidths
-
-    // Merge cells para título
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }, // Título
-      { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }  // Metadata
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
     ]
 
     XLSX.utils.book_append_sheet(wb, ws, 'Descuentos')
-
-    // Generar archivo
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   } catch (error) {
@@ -185,33 +197,18 @@ export const generateDiscountReport = async (stationId, startDate, endDate, stat
 }
 
 /**
- * Genera el Reporte de Facturación con 3 pestañas
- * Pestaña 1: 25% - Descuento Empleado
- * Pestaña 2: 75% - Asunción Empresa
- * Pestaña 3: Resumen Total
- * @param {string} stationId - ID de la estación
- * @param {string} startDate - Fecha inicial
- * @param {string} endDate - Fecha final
- * @param {string} stationName - Nombre de la estación
- * @returns {Blob} Archivo Excel
+ * Genera el Reporte de Facturación
  */
 export const generateBillingReport = async (stationId, startDate, endDate, stationName) => {
   try {
     const orders = await getOrdersForReport(stationId, startDate, endDate)
+    if (orders.length === 0) throw new Error('No hay pedidos para generar el reporte')
 
-    if (orders.length === 0) {
-      throw new Error('No hay pedidos para generar el reporte')
-    }
-
-    // Obtener todas las fechas únicas
     const uniqueDates = [...new Set(orders.map(o => o.menu_date))].sort()
-
-    // Agrupar por empleado
     const employeeMap = new Map()
 
     orders.forEach(order => {
       const empKey = order.employee.dni
-
       if (!employeeMap.has(empKey)) {
         employeeMap.set(empKey, {
           dni: order.employee.dni,
@@ -222,19 +219,10 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
           companyDates: {}
         })
       }
-
       const emp = employeeMap.get(empKey)
       const dateKey = order.menu_date
-
-      // Inicializar si no existe
-      if (!emp.employeeDates[dateKey]) {
-        emp.employeeDates[dateKey] = 0
-      }
-      if (!emp.companyDates[dateKey]) {
-        emp.companyDates[dateKey] = 0
-      }
-
-      // Acumular 25% empleado y 75% empresa
+      if (!emp.employeeDates[dateKey]) emp.employeeDates[dateKey] = 0
+      if (!emp.companyDates[dateKey]) emp.companyDates[dateKey] = 0
       emp.employeeDates[dateKey] += Number(order.employee_cost_snapshot || 0)
       emp.companyDates[dateKey] += Number(order.company_subsidy_snapshot || 0)
     })
@@ -243,140 +231,153 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
       a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
     )
 
-    // Headers comunes
-    const baseHeaders = ['ITEM', 'DNI', 'NOMBRES', 'AREA', 'CARGO']
-    const dateHeaders = uniqueDates.map(d => formatDate(d))
-    const headers = [...baseHeaders, ...dateHeaders, 'TOTAL']
+    const baseHeaders = [
+      createCell('ITEM', STYLE_HEADER),
+      createCell('DNI', STYLE_HEADER),
+      createCell('NOMBRES', STYLE_HEADER),
+      createCell('AREA', STYLE_HEADER),
+      createCell('CARGO', STYLE_HEADER)
+    ]
+    const dateHeaders = uniqueDates.map(d => createCell(formatDate(d, 'd'), STYLE_HEADER))
+    const headers = [...baseHeaders, ...dateHeaders, createCell('TOTAL', STYLE_HEADER)]
 
     const wb = XLSX.utils.book_new()
 
-    // ==========================================
-    // PESTAÑA 1: 25% - Descuento Empleado
-    // ==========================================
+    // --- Pestaña 1: 25% Empleado ---
     const employeeRows = employees.map((emp, index) => {
-      const row = [index + 1, emp.dni, emp.fullName, emp.area, emp.role]
+      const row = [
+        createCell(index + 1, STYLE_CELL_CENTER),
+        createCell(emp.dni, STYLE_CELL_CENTER),
+        createCell(emp.fullName, STYLE_CELL),
+        createCell(emp.area, STYLE_CELL_CENTER),
+        createCell(emp.role, STYLE_CELL)
+      ]
       let total = 0
-
       uniqueDates.forEach(date => {
         const amount = emp.employeeDates[date] || 0
-        row.push(amount > 0 ? amount.toFixed(2) : '')
+        row.push(createCell(amount > 0 ? amount.toFixed(2) : '', STYLE_CELL_CENTER))
         total += amount
       })
-
-      row.push(total.toFixed(2))
+      row.push(createCell(total.toFixed(2), STYLE_SECONDARY_BG))
       return row
     })
-
-    const employeeTotal = employeeRows.reduce((sum, row) =>
-      sum + Number(row[row.length - 1]), 0
-    )
+    const employeeTotal = employeeRows.reduce((sum, row) => sum + Number(row[row.length - 1].v), 0)
 
     const ws1Data = [
-      [[`25% - DESCUENTO EMPLEADO`]],
-      [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]],
-      [['']],
+      [createCell('25% - DESCUENTO EMPLEADO', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
       headers,
       ...employeeRows,
-      [[''], [''], [''], [''], [''], ...Array(dateHeaders.length).fill(''), `S/ ${employeeTotal.toFixed(2)}`]
+      [...Array(headers.length - 1).fill(createCell('')), createCell(`S/ ${employeeTotal.toFixed(2)}`, STYLE_TOTAL_FINAL)]
     ]
-
     const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
     ws1['!cols'] = [
       { wch: 6 }, { wch: 12 }, { wch: 35 }, { wch: 15 }, { wch: 30 },
-      ...dateHeaders.map(() => ({ wch: 12 })),
+      ...dateHeaders.map(() => ({ wch: 5 })),
       { wch: 12 }
     ]
-    ws1['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }
-    ]
-
+    ws1['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }]
     XLSX.utils.book_append_sheet(wb, ws1, '25% Empleado')
 
-    // ==========================================
-    // PESTAÑA 2: 75% - Asunción Empresa
-    // ==========================================
+    // --- Pestaña 2: 75% Empresa ---
     const companyRows = employees.map((emp, index) => {
-      const row = [index + 1, emp.dni, emp.fullName, emp.area, emp.role]
+      const row = [
+        createCell(index + 1, STYLE_CELL_CENTER),
+        createCell(emp.dni, STYLE_CELL_CENTER),
+        createCell(emp.fullName, STYLE_CELL),
+        createCell(emp.area, STYLE_CELL_CENTER),
+        createCell(emp.role, STYLE_CELL)
+      ]
       let total = 0
-
       uniqueDates.forEach(date => {
         const amount = emp.companyDates[date] || 0
-        row.push(amount > 0 ? amount.toFixed(2) : '')
+        row.push(createCell(amount > 0 ? amount.toFixed(2) : '', STYLE_CELL_CENTER))
         total += amount
       })
-
-      row.push(total.toFixed(2))
+      row.push(createCell(total.toFixed(2), STYLE_SECONDARY_BG))
       return row
     })
-
-    const companyTotal = companyRows.reduce((sum, row) =>
-      sum + Number(row[row.length - 1]), 0
-    )
+    const companyTotal = companyRows.reduce((sum, row) => sum + Number(row[row.length - 1].v), 0)
 
     const ws2Data = [
-      [[`75% - ASUNCIÓN EMPRESA`]],
-      [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]],
-      [['']],
+      [createCell('75% - ASUNCIÓN EMPRESA', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
       headers,
       ...companyRows,
-      [[''], [''], [''], [''], [''], ...Array(dateHeaders.length).fill(''), `S/ ${companyTotal.toFixed(2)}`]
+      [...Array(headers.length - 1).fill(createCell('')), createCell(`S/ ${companyTotal.toFixed(2)}`, STYLE_TOTAL_FINAL)]
     ]
-
     const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
     ws2['!cols'] = ws1['!cols']
     ws2['!merges'] = ws1['!merges']
-
     XLSX.utils.book_append_sheet(wb, ws2, '75% Empresa')
 
-    // ==========================================
-    // PESTAÑA 3: Resumen Total
-    // ==========================================
-    const grandTotal = employeeTotal + companyTotal
-    const subtotalSinIGV = grandTotal / (1 + IGV_RATE)
-    const igvAmount = grandTotal - subtotalSinIGV
+    // --- Pestaña 3: Resumen Total ---
+    const startD = typeof startDate === 'string' ? parseISO(startDate) : startDate
+    const weekNum = format(startD, 'I')
+    const totalDesayunos = orders.length
+    const pedidosNormales = orders.filter(o => !o.employee?.is_visitor).length
+    const pedidosEspeciales = orders.filter(o => o.employee?.is_visitor).length
 
-    // Calcular con boleta y factura (50/50 asumiendo distribución equitativa)
-    const boletaPercent = 0.5
-    const facturaPercent = 0.5
+    const empPriceBreakdown = {}
+    const compPriceBreakdown = {}
+    orders.forEach(o => {
+      const ep = Number(o.employee_cost_snapshot || 0).toFixed(2)
+      const cp = Number(o.company_subsidy_snapshot || 0).toFixed(2)
+      empPriceBreakdown[ep] = (empPriceBreakdown[ep] || 0) + 1
+      compPriceBreakdown[cp] = (compPriceBreakdown[cp] || 0) + 1
+    })
 
-    const boletaTotal = grandTotal * boletaPercent
-    const facturaSubtotal = (grandTotal * facturaPercent) / (1 + IGV_RATE)
-    const facturaIGV = facturaSubtotal * IGV_RATE
-    const facturaTotal = facturaSubtotal + facturaIGV
+    const buildSummaryRows = (breakdown) => Object.entries(breakdown)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([price, count], idx) => [
+        createCell(idx + 1, STYLE_CELL_CENTER),
+        createCell('ALIMENTACION PERSONAL', STYLE_CELL),
+        createCell(formatDate(startDate), STYLE_CELL_CENTER),
+        createCell(formatDate(endDate), STYLE_CELL_CENTER),
+        createCell(count, STYLE_CELL_CENTER),
+        createCell(price, STYLE_CELL_CENTER),
+        createCell((Number(price) * count).toFixed(2), STYLE_CELL_CENTER)
+      ])
 
-    const summaryData = [
-      [[`RESUMEN TOTAL PARA FACTURACIÓN`]],
-      [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]],
-      [['']],
-      [['CONCEPTO', 'MONTO (S/)']],
-      [['']],
-      [['Aporte Empleados (25%)', employeeTotal.toFixed(2)]],
-      [['Subsidio Empresa (75%)', companyTotal.toFixed(2)]],
-      [['TOTAL GENERAL', grandTotal.toFixed(2)]],
-      [['']],
-      [['DISTRIBUCIÓN POR TIPO DE COMPROBANTE']],
-      [['']],
-      [['CON BOLETA (50%)', boletaTotal.toFixed(2)]],
-      [['']],
-      [['CON FACTURA (50%)']],
-      [['  Subtotal', facturaSubtotal.toFixed(2)]],
-      [['  IGV (18%)', facturaIGV.toFixed(2)]],
-      [['  Total con IGV', facturaTotal.toFixed(2)]],
-      [['']],
-      [['VERIFICACIÓN TOTAL', (boletaTotal + facturaTotal).toFixed(2)]],
+    const empTableRows = buildSummaryRows(empPriceBreakdown)
+    const compTableRows = buildSummaryRows(compPriceBreakdown)
+    const totalFacturarSub = compTableRows.reduce((sum, r) => sum + Number(r[6].v), 0)
+    const igv = totalFacturarSub * IGV_RATE
+    const totalFacturarFinal = totalFacturarSub + igv
+
+    const summHeader = ['ITEM', 'DESCRIPCION', 'DESDE', 'HASTA', 'CANTIDAD', 'P.UNITARIO', 'TOTAL'].map(h => createCell(h, STYLE_HEADER))
+
+    const ws3Data = [
+      [createCell(`RESUMEN TOTAL PARA FACTURACION DE LA SEMANA ${weekNum}`, STYLE_TITLE)],
+      [createCell(`Período: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      [createCell('CON BOLETA 25% - DESCUENTO EMPLEADO', STYLE_SECONDARY_BG)],
+      summHeader,
+      ...empTableRows,
+      [createCell(''), createCell(''), createCell(''), createCell('TOTAL DESCUENTO EMPLEADO', STYLE_SECONDARY_BG), createCell(''), createCell(''), createCell(employeeTotal.toFixed(2), STYLE_SECONDARY_BG)],
+      [createCell('')],
+      [createCell('CON FACTURA 75% - ASUNCIÓN EMPRESA', STYLE_SECONDARY_BG)],
+      summHeader,
+      ...compTableRows,
+      [...Array(5).fill(createCell('')), createCell('SUB TOTAL', STYLE_SECONDARY_BG), createCell(totalFacturarSub.toFixed(2), STYLE_CELL_CENTER)],
+      [...Array(5).fill(createCell('')), createCell(`IGV ${(IGV_RATE * 100).toFixed(2)}%`, STYLE_SECONDARY_BG), createCell(igv.toFixed(2), STYLE_CELL_CENTER)],
+      [...Array(5).fill(createCell('')), createCell('TOTAL A FACTURAR', STYLE_TOTAL_FINAL), createCell(totalFacturarFinal.toFixed(2), STYLE_TOTAL_FINAL)]
     ]
 
-    const ws3 = XLSX.utils.aoa_to_sheet(summaryData)
-    ws3['!cols'] = [{ wch: 40 }, { wch: 15 }]
-    ws3['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
-    ]
+    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
+    XLSX.utils.sheet_add_aoa(ws3, [
+      [createCell('Total de Desayunos:', STYLE_SECONDARY_BG), createCell(totalDesayunos, STYLE_CELL_CENTER)],
+      [createCell('Pedidos Normales:', STYLE_SECONDARY_BG), createCell(pedidosNormales, STYLE_CELL_CENTER)],
+      [createCell('Pedidos Especiales:', STYLE_SECONDARY_BG), createCell(pedidosEspeciales, STYLE_CELL_CENTER)],
+      [createCell('Costo por Menú:', STYLE_SECONDARY_BG), createCell((Number(empTableRows[0]?.v || 0) + Number(compTableRows[0]?.v || 0) || 12).toFixed(2), STYLE_CELL_CENTER)]
+    ], { origin: 'I5' })
 
+    ws3['!cols'] = [{ wch: 6 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 5 }, { wch: 25 }, { wch: 10 }]
+    ws3['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }]
     XLSX.utils.book_append_sheet(wb, ws3, 'Resumen')
 
-    // Generar archivo
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   } catch (error) {
@@ -386,107 +387,66 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
 }
 
 /**
- * Genera el Reporte de Auditoría (Pedidos Faltantes)
- * Lista empleados activos que NO tienen pedido para cada fecha del rango seleccionado.
- * @param {string} stationId - ID de la estación
- * @param {string} startDate - Fecha inicial
- * @param {string} endDate - Fecha final
- * @param {string} stationName - Nombre de la estación
- * @returns {Blob} Archivo Excel
+ * Genera el Reporte de Auditoría
  */
 export const generateMissingOrdersReport = async (stationId, startDate, endDate, stationName) => {
   try {
-    // 1. Obtener todos los empleados activos de la estación
-    const { data: employees, error: empError } = await supabase
-      .from('employees')
-      .select('id, dni, full_name, role_name, area')
-      .eq('station_id', stationId)
-      .neq('status', 'CESADO')
-      .order('full_name')
-
+    const { data: employees, error: empError } = await supabase.from('employees').select('id, dni, full_name, role_name, area').eq('station_id', stationId).neq('status', 'CESADO').order('area').order('full_name')
     if (empError) throw empError
-    if (!employees || employees.length === 0) throw new Error('No hay empleados activos en esta estación')
 
-    // 2. Obtener todos los pedidos en el rango
     const orders = await getOrdersForReport(stationId, startDate, endDate)
-
-    // 3. Generar rango de fechas
-    const start = new Date(startDate)
-    const end = new Date(endDate)
+    const start = parseISO(startDate)
+    const end = parseISO(endDate)
     const dates = []
+    for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) dates.push(new Date(dt).toISOString().split('T')[0])
 
-    // Iterar día por día
-    for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
-      dates.push(new Date(dt).toISOString().split('T')[0])
-    }
-
-    const missingRows = []
-
-    // 4. Cruzar información
-    dates.forEach(dateStr => {
-      // Pedidos para esta fecha
-      const dateOrders = orders.filter(o => o.menu_date === dateStr)
-      const employeesWithOrder = new Set(dateOrders.map(o => o.employee.dni))
-
-      // Check cada empleado
-      employees.forEach(emp => {
-        if (!employeesWithOrder.has(emp.dni)) {
-          missingRows.push([
-            formatDate(dateStr),
-            emp.dni,
-            emp.full_name,
-            emp.area || 'N/A',
-            emp.role_name
-          ])
-        }
-      })
+    const orderMap = {}
+    orders.forEach(o => {
+      const dni = o.employee.dni
+      const date = o.menu_date
+      if (!orderMap[dni]) orderMap[dni] = {}
+      orderMap[dni][date] = true
     })
 
-    if (missingRows.length === 0) {
-      throw new Error('¡Excelente! Todos los empleados tienen pedido para las fechas seleccionadas.')
-    }
+    const STYLE_MISSING = { ...STYLE_CELL_CENTER, font: { color: { rgb: "EF4444" }, bold: true } }
 
-    // 5. Generar Excel
+    const rows = employees.map((emp, idx) => {
+      const row = [createCell(idx + 1, STYLE_CELL_CENTER), createCell(emp.dni, STYLE_CELL_CENTER), createCell(emp.full_name, STYLE_CELL), createCell(emp.area || 'N/A', STYLE_CELL_CENTER), createCell(emp.role_name, STYLE_CELL)]
+      let faltas = 0
+      dates.forEach(date => {
+        const hasOrder = orderMap[emp.dni]?.[date]
+        if (!hasOrder) { row.push(createCell('FALTA', STYLE_MISSING)); faltas++ }
+        else row.push(createCell('', STYLE_CELL_CENTER))
+      })
+      row.push(createCell(faltas, STYLE_SECONDARY_BG))
+      return row
+    })
+
     const wb = XLSX.utils.book_new()
-    const headers = ['FECHA', 'DNI', 'NOMBRES', 'AREA', 'CARGO']
+    const dateHeaders = dates.map(d => createCell(formatDate(d, 'd'), STYLE_HEADER))
+    const headers = [createCell('ITEM', STYLE_HEADER), createCell('DNI', STYLE_HEADER), createCell('NOMBRES', STYLE_HEADER), createCell('AREA', STYLE_HEADER), createCell('CARGO', STYLE_HEADER), ...dateHeaders, createCell('TOTAL FALTAS', STYLE_HEADER)]
 
     const wsData = [
-      [[`REPORTE DE AUDITORÍA - EMPLEADOS SIN PEDIDO`]],
-      [[`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`]],
-      [['']],
+      [createCell('REPORTE DE AUDITORÍA - CONTROL DE ASISTENCIA AL COMEDOR', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
       headers,
-      ...missingRows
+      ...rows
     ]
 
     const ws = XLSX.utils.aoa_to_sheet(wsData)
-    ws['!cols'] = [
-      { wch: 15 }, // FECHA
-      { wch: 12 }, // DNI
-      { wch: 35 }, // NOMBRES
-      { wch: 20 }, // AREA
-      { wch: 25 }, // CARGO
-    ]
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }
-    ]
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Faltantes')
+    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 35 }, { wch: 20 }, { wch: 30 }, ...dateHeaders.map(() => ({ wch: 6 })), { wch: 15 }]
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }]
+    XLSX.utils.book_append_sheet(wb, ws, 'Auditoría Faltantes')
 
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-
   } catch (error) {
     console.error('Error generating missing orders report:', error)
     throw error
   }
 }
 
-/**
- * Descarga un blob como archivo
- * @param {Blob} blob - Archivo blob
- * @param {string} filename - Nombre del archivo
- */
 export const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')

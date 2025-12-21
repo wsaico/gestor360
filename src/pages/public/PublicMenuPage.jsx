@@ -349,10 +349,24 @@ const PublicMenuPage = () => {
 
             let selectedOptionString = ''
             if (parsedMenuOptions.length === 1 && parsedMenuOptions[0].title === 'default') {
-                selectedOptionString = selections['default']
+                const rawSelection = selections['default']
+                // Split by | to store a clean record but keeping both info for the provider
+                if (typeof rawSelection === 'string' && rawSelection.includes('|')) {
+                    const [name, details] = rawSelection.split('|')
+                    selectedOptionString = `${name} (${details})`
+                } else {
+                    selectedOptionString = rawSelection
+                }
             } else {
                 selectedOptionString = parsedMenuOptions
-                    .map(s => selections[s.title])
+                    .map(s => {
+                        const sel = selections[s.title]
+                        if (typeof sel === 'string' && sel.includes('|')) {
+                            const [name, details] = sel.split('|')
+                            return `${name} (${details})`
+                        }
+                        return sel
+                    })
                     .filter(Boolean)
                     .join(' + ')
             }
@@ -704,9 +718,24 @@ const PublicMenuPage = () => {
                                                                                     onChange={() => handleSelection(section.title, item)}
                                                                                     className="hidden"
                                                                                 />
-                                                                                <span className={`text-sm ${isSelected ? 'font-semibold text-primary-900' : 'text-gray-600'}`}>
-                                                                                    {item}
-                                                                                </span>
+                                                                                <div className="flex flex-col">
+                                                                                    {(() => {
+                                                                                        const isString = typeof item === 'string'
+                                                                                        const [name, details] = isString && item.includes('|') ? item.split('|') : [item, null]
+                                                                                        return (
+                                                                                            <>
+                                                                                                <span className={`text-sm ${isSelected ? 'font-black text-primary-900' : 'font-bold text-gray-800'}`}>
+                                                                                                    {name}
+                                                                                                </span>
+                                                                                                {details && (
+                                                                                                    <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight mt-0.5">
+                                                                                                        {details}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </>
+                                                                                        )
+                                                                                    })()}
+                                                                                </div>
                                                                             </label>
                                                                         )
                                                                     })}

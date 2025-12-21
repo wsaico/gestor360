@@ -21,7 +21,8 @@ import { validateDNI, validateEmail } from '@utils/helpers'
 const EmployeeFormPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { station } = useAuth()
+  const { station, user, isGlobalAdmin } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
   const isEdit = !!id
 
   const [loading, setLoading] = useState(false)
@@ -55,13 +56,23 @@ const EmployeeFormPage = () => {
   useEffect(() => {
     fetchJobRoles()
     fetchStations()
-    if (station?.id) {
-      fetchAreas()
-    }
+    fetchStations()
     if (isEdit) {
       fetchEmployee()
+    } else {
+      // On Create: Load areas for the initial station (context or empty)
+      if (station?.id) fetchAreas(station.id)
     }
   }, [id, station?.id])
+
+  // Effect to reload areas when form station changes
+  useEffect(() => {
+    if (formData.station_id) {
+      fetchAreas(formData.station_id)
+    } else {
+      setAreas([])
+    }
+  }, [formData.station_id])
 
   const fetchJobRoles = async () => {
     try {
@@ -89,13 +100,14 @@ const EmployeeFormPage = () => {
     }
   }
 
-  const fetchAreas = async () => {
+  const fetchAreas = async (targetStationId) => {
     try {
-      if (!station?.id) return
-      const data = await areaService.getAll(station.id, true)
+      if (!targetStationId) return
+      const data = await areaService.getAll(targetStationId, true)
       setAreas(data)
     } catch (error) {
       console.error('Error fetching areas:', error)
+      setAreas([])
     }
   }
 
@@ -193,9 +205,23 @@ const EmployeeFormPage = () => {
       // Limpiar datos: eliminar campos anidados y campos de solo lectura
       const { station, created_at, updated_at, ...cleanData } = formData
 
+      // Determine Final Station ID
+      // If Admin (ANY Admin) -> Use Form selection
+      // If Supervisor/Restricted -> Force Context Station if set, else Form selection (fallback)
+      const allowedToChangeStation = isAdmin
+      const finalStationId = allowedToChangeStation ? formData.station_id : (station?.id || formData.station_id)
+
+      console.log('Saving Employee Station:', {
+        role: user?.role,
+        isAdmin,
+        formStation: formData.station_id,
+        contextStation: station?.id,
+        FINAL: finalStationId
+      })
+
       const dataToSave = {
         ...cleanData,
-        station_id: station?.id || formData.station_id
+        station_id: finalStationId
       }
 
       // Ensure area_id is null if empty string
@@ -266,7 +292,7 @@ const EmployeeFormPage = () => {
                 value={formData.station_id}
                 onChange={handleChange}
                 className={`input ${errors.station_id ? 'border-red-500' : ''}`}
-                disabled={saving || loadingStations}
+                disabled={saving || loadingStations || (!isAdmin && !!station?.id)}
               >
                 <option value="">Seleccione una estación</option>
                 {stations.map((station) => (

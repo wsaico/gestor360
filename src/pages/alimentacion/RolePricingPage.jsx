@@ -289,17 +289,75 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
     station_id: stationId,
     role_name: pricing?.role_name || '',
     employee_cost: pricing?.employee_cost || '0.00',
-    company_subsidy: pricing?.company_subsidy || '0.00'
+    company_subsidy: pricing?.company_subsidy || '0.00',
+    total_cost: pricing ? (Number(pricing.employee_cost) + Number(pricing.company_subsidy)).toFixed(2) : '0.00'
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
 
-  const handleChange = (e) => {
+  // Logic:
+  // 1. Change Total -> Adjust Subsidy (Total - Employee)
+  // 2. Change Employee -> Adjust Subsidy (Total - Employee) to keep Total fixed, OR update Total?
+  //    User wants to "place a value... and calculate without manual".
+  //    If I set Total=15, then Employee=5 --> Subsidy should be 10. (Total fixed)
+  //    If I set Employee=5, Subsidy=10 --> Total should be 15. (Total calculated)
+
+  const handleTotalChange = (e) => {
+    const total = e.target.value
+    const employee = formData.employee_cost
+
+    // Auto-calc Subsidy
+    const subsidy = (Number(total) - Number(employee)).toFixed(2)
+
+    setFormData(prev => ({
+      ...prev,
+      total_cost: total,
+      company_subsidy: Number(subsidy) < 0 ? '0.00' : subsidy
+    }))
+  }
+
+  const handleEmployeeChange = (e) => {
+    const employee = e.target.value
+    const total = formData.total_cost
+
+    // If Total is set (>0), we adjust Subsidy to match Total
+    // If Total is 0, we assume we are building up the cost, so we update Total
+
+    if (Number(total) > 0) {
+      const subsidy = (Number(total) - Number(employee)).toFixed(2)
+      setFormData(prev => ({
+        ...prev,
+        employee_cost: employee,
+        company_subsidy: Number(subsidy) < 0 ? '0.00' : subsidy
+      }))
+    } else {
+      const subsidy = formData.company_subsidy
+      const newTotal = (Number(employee) + Number(subsidy)).toFixed(2)
+      setFormData(prev => ({
+        ...prev,
+        employee_cost: employee,
+        total_cost: newTotal
+      }))
+    }
+  }
+
+  const handleSubsidyChange = (e) => {
+    const subsidy = e.target.value
+    const employee = formData.employee_cost
+
+    // When changing subsidy explicitly, usually we want to update the total
+    const newTotal = (Number(employee) + Number(subsidy)).toFixed(2)
+
+    setFormData(prev => ({
+      ...prev,
+      company_subsidy: subsidy,
+      total_cost: newTotal
+    }))
+  }
+
+  const handleChangeRaw = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }))
-    }
   }
 
   const validateForm = () => {
@@ -319,9 +377,11 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
       newErrors.company_subsidy = 'El subsidio debe ser un número positivo'
     }
 
-    if (employeeCost === 0 && companySubsidy === 0) {
-      newErrors.employee_cost = 'Al menos uno de los montos debe ser mayor a cero'
-      newErrors.company_subsidy = 'Al menos uno de los montos debe ser mayor a cero'
+    const totalCost = Number(formData.total_cost)
+    if (isNaN(totalCost) || totalCost <= 0) {
+      // Warning but maybe allow? User requested calculations.
+      // Let's enforce at least real cost.
+      newErrors.total_cost = 'El costo total debe ser mayor a 0'
     }
 
     setErrors(newErrors)
@@ -339,7 +399,8 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
       setSaving(true)
 
       const dataToSave = {
-        ...formData,
+        station_id: formData.station_id,
+        role_name: formData.role_name,
         employee_cost: Number(formData.employee_cost),
         company_subsidy: Number(formData.company_subsidy)
       }
@@ -361,8 +422,6 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
     }
   }
 
-  const totalCost = Number(formData.employee_cost) + Number(formData.company_subsidy)
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg max-w-lg w-full p-6">
@@ -380,7 +439,7 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
               id="role_name"
               name="role_name"
               value={formData.role_name}
-              onChange={handleChange}
+              onChange={handleChangeRaw}
               className={`input ${errors.role_name ? 'border-red-500' : ''}`}
               disabled={saving || isEdit}
             >
@@ -399,63 +458,82 @@ const PricingModal = ({ stationId, pricing, jobRoles, onClose, onSuccess }) => {
             )}
           </div>
 
-          {/* Aporte Empleado */}
-          <div>
-            <label htmlFor="employee_cost" className="label">
-              Aporte Empleado (S/) <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              id="employee_cost"
-              name="employee_cost"
-              value={formData.employee_cost}
-              onChange={handleChange}
-              step="0.01"
-              min="0"
-              className={`input ${errors.employee_cost ? 'border-red-500' : ''}`}
-              disabled={saving}
-            />
-            {errors.employee_cost && (
-              <p className="mt-1 text-sm text-red-600">{errors.employee_cost}</p>
-            )}
-          </div>
+          <div className="border-t border-gray-100 my-4"></div>
 
-          {/* Subsidio Empresa */}
-          <div>
-            <label htmlFor="company_subsidy" className="label">
-              Subsidio Empresa (S/) <span className="text-red-500">*</span>
+          {/* Costo Total - Moved Top as per request for better flow */}
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
+            <label htmlFor="total_cost" className="block text-sm font-bold text-blue-900 mb-1">
+              Costo Total del Menú (S/)
             </label>
-            <input
-              type="number"
-              id="company_subsidy"
-              name="company_subsidy"
-              value={formData.company_subsidy}
-              onChange={handleChange}
-              step="0.01"
-              min="0"
-              className={`input ${errors.company_subsidy ? 'border-red-500' : ''}`}
-              disabled={saving}
-            />
-            {errors.company_subsidy && (
-              <p className="mt-1 text-sm text-red-600">{errors.company_subsidy}</p>
-            )}
-          </div>
-
-          {/* Costo Total */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Costo Total del Menú:</span>
-              <span className="text-xl font-bold text-gray-900">
-                S/ {totalCost.toFixed(2)}
-              </span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 font-bold">S/</span>
+              <input
+                type="number"
+                id="total_cost"
+                name="total_cost"
+                value={formData.total_cost}
+                onChange={handleTotalChange}
+                step="0.01"
+                min="0"
+                className={`input pl-8 font-bold text-lg text-blue-900 ${errors.total_cost ? 'border-red-500' : ''}`}
+                disabled={saving}
+                placeholder="0.00"
+              />
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Este es el valor total del menú que se aplicará en los pedidos
+            {errors.total_cost && (
+              <p className="mt-1 text-sm text-red-600">{errors.total_cost}</p>
+            )}
+            <p className="text-xs text-blue-700 mt-2">
+              Ingrese el valor total y el sistema calculará el subsidio automáticamente al ingresar el aporte.
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            {/* Aporte Empleado */}
+            <div>
+              <label htmlFor="employee_cost" className="label">
+                Aporte Empleado (S/)
+              </label>
+              <input
+                type="number"
+                id="employee_cost"
+                name="employee_cost"
+                value={formData.employee_cost}
+                onChange={handleEmployeeChange}
+                step="0.01"
+                min="0"
+                className={`input ${errors.employee_cost ? 'border-red-500' : ''}`}
+                disabled={saving}
+              />
+              {errors.employee_cost && (
+                <p className="mt-1 text-sm text-red-600">{errors.employee_cost}</p>
+              )}
+            </div>
+
+            {/* Subsidio Empresa */}
+            <div>
+              <label htmlFor="company_subsidy" className="label">
+                Subsidio Empresa (S/)
+              </label>
+              <input
+                type="number"
+                id="company_subsidy"
+                name="company_subsidy"
+                value={formData.company_subsidy}
+                onChange={handleSubsidyChange}
+                step="0.01"
+                min="0"
+                className={`input ${errors.company_subsidy ? 'border-red-500' : ''}`}
+                disabled={saving}
+              />
+              {errors.company_subsidy && (
+                <p className="mt-1 text-sm text-red-600">{errors.company_subsidy}</p>
+              )}
+            </div>
+          </div>
+
           {/* Botones */}
-          <div className="flex items-center justify-end space-x-3 pt-4">
+          <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}

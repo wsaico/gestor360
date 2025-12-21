@@ -154,10 +154,10 @@ const InventoryPage = () => {
         eppInventoryService.getAll(station.id),
         areaService.getAll(station.id, true),
         masterProductService.getCategories(),
-        employeeService.getAll(station.id, { activeOnly: true })
+        employeeService.getAll(station.id, { activeOnly: true }, 1, 1000).then(res => res.data)
       ])
 
-      
+
       setItems(inventoryData || [])
       setAreas(areasData || [])
       setCategories(categoriesData || [])

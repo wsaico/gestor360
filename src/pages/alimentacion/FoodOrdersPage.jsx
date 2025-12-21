@@ -114,7 +114,8 @@ const FoodOrdersPage = () => {
             // Only load if we have a station context (or global admin might want all? Usually context specific)
             // User requested strict filtering.
             if (stationToLoad) {
-                const data = await employeeService.getAll(stationToLoad, { activeOnly: true })
+                const response = await employeeService.getAll(stationToLoad, { activeOnly: true }, 1, 1000)
+                const data = response.data
                 setEmployees(data || [])
             } else {
                 setEmployees([])
@@ -383,7 +384,7 @@ const FoodOrdersPage = () => {
             // Fetch active employees for this context
             // Note: If no station selected (Superadmin view all), this might be heavy.
             // We'll warn or just fetch all? Let's try fetching all if no station.
-            const allEmployees = await employeeService.getAll(targetStationId, { activeOnly: true })
+            const { data: allEmployees } = await employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000)
 
             // Get unique employee IDs who HAVE orders in the CURRENT FILTERED LIST
             // This assumes the user has filtered by the Date/Meal they want to audit.
@@ -1040,8 +1041,8 @@ const FoodOrdersPage = () => {
                                     <button
                                         onClick={confirmation.onConfirm}
                                         className={`flex-1 py-3 font-bold rounded-xl text-white shadow-lg transition-all active:scale-95 ${confirmation.confirmColor === 'red'
-                                                ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
-                                                : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
+                                            ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
+                                            : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
                                             }`}
                                     >
                                         {confirmation.confirmText}

@@ -89,7 +89,7 @@ const RenewalsPage = () => {
         .order('renewal_date', { ascending: true })
 
       if (error) throw error
-      
+
       setRenewals(data || [])
     } catch (error) {
       console.error('Error fetching renewals:', error)
@@ -104,7 +104,7 @@ const RenewalsPage = () => {
 
     try {
       const data = await eppInventoryService.getAll(station.id)
-      
+
       setItems(data || [])
     } catch (error) {
       console.error('Error fetching items:', error)
@@ -114,7 +114,7 @@ const RenewalsPage = () => {
   const fetchEmployees = async () => {
     if (!station?.id) return
     try {
-      const data = await employeeService.getAll(station.id, { activeOnly: true })
+      const { data } = await employeeService.getAll(station.id, { activeOnly: true }, 1, 1000)
       setEmployees(data || [])
     } catch (error) {
       console.error('Error fetching employees:', error)

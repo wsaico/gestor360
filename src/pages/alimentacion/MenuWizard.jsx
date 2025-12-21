@@ -425,15 +425,18 @@ const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
 }
 
 /**
- * Editor for Simple List
+ * Editor for Simple List (Combos)
  */
 const SimpleMenuEditor = ({ options, onChange }) => {
-    const [newOpt, setNewOpt] = useState('')
+    const [name, setName] = useState('')
+    const [details, setDetails] = useState('')
 
     const add = () => {
-        if (!newOpt.trim()) return
-        onChange([...options, newOpt.trim()])
-        setNewOpt('')
+        if (!name.trim()) return
+        const entry = details.trim() ? `${name.trim()}|${details.trim()}` : name.trim()
+        onChange([...options, entry])
+        setName('')
+        setDetails('')
     }
 
     const remove = (idx) => {
@@ -441,35 +444,69 @@ const SimpleMenuEditor = ({ options, onChange }) => {
     }
 
     return (
-        <div>
-            <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+        <div className="space-y-4">
+            <h4 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
                 <List className="w-5 h-5 text-primary-500" />
                 Opciones del Menú (Combos)
             </h4>
-            <div className="flex gap-2 mb-4">
-                <input
-                    type="text"
-                    className="input flex-1"
-                    placeholder="Ej: Estofado de Pollo + Refresco"
-                    value={newOpt}
-                    onChange={e => setNewOpt(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && add()}
-                />
-                <button className="btn btn-primary" onClick={add}>
-                    <Plus className="w-5 h-5" />
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Nombre del Combo</label>
+                        <input
+                            type="text"
+                            className="input text-sm"
+                            placeholder="Ej: Combo 1"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && add()}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Detalles / Contenido</label>
+                        <input
+                            type="text"
+                            className="input text-sm"
+                            placeholder="Ej: Jugo, Trucha, Cafe"
+                            value={details}
+                            onChange={e => setDetails(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && add()}
+                        />
+                    </div>
+                </div>
+                <button
+                    className="btn btn-primary w-full flex items-center justify-center gap-2"
+                    onClick={add}
+                    disabled={!name.trim()}
+                >
+                    <Plus className="w-4 h-4" /> Agregar Opción
                 </button>
             </div>
-            <ul className="space-y-2">
-                {options.map((opt, i) => (
-                    <li key={i} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                        <span className="text-gray-700 dark:text-gray-300">{opt}</span>
-                        <button onClick={() => remove(i)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    </li>
-                ))}
+
+            <ul className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {options.map((opt, i) => {
+                    const [optName, optDetails] = opt.split('|')
+                    return (
+                        <li key={i} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 group hover:border-primary-200 transition-colors">
+                            <div className="flex-1 min-w-0">
+                                <span className="font-bold text-gray-800 dark:text-gray-200 block">{optName}</span>
+                                {optDetails && (
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 italic block truncate">
+                                        {optDetails}
+                                    </span>
+                                )}
+                            </div>
+                            <button onClick={() => remove(i)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </li>
+                    )
+                })}
                 {options.length === 0 && (
-                    <li className="text-center py-4 text-gray-400 text-sm italic">Agregue opciones a la lista</li>
+                    <li className="text-center py-8 bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border-2 border-dashed border-gray-100 dark:border-gray-800 text-gray-400 text-sm italic">
+                        Agregue combos a la lista para comenzar
+                    </li>
                 )}
             </ul>
         </div>

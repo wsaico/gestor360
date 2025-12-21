@@ -21,7 +21,8 @@ import {
  * Accesible para ADMIN y SUPERVISOR
  */
 const ReportsPage = () => {
-  const { station } = useAuth()
+  const { station, user, stations, selectStation } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
 
   const [activeTab, setActiveTab] = useState('discount')
   const [startDate, setStartDate] = useState('')
@@ -68,6 +69,11 @@ const ReportsPage = () => {
   }
 
   const validateDates = () => {
+    if (!station?.id) {
+      setMessage({ type: 'error', text: 'Debe seleccionar una estación en la parte superior' })
+      return false
+    }
+
     if (!startDate || !endDate) {
       setMessage({ type: 'error', text: 'Debe seleccionar el rango de fechas' })
       return false
@@ -187,6 +193,40 @@ const ReportsPage = () => {
           Genera reportes consolidados en Excel
         </p>
       </div>
+
+      {/* Selector de Estación para Admin si no hay una activa */}
+      {!station && isAdmin && (
+        <div className="card bg-yellow-50 border-yellow-200">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-6 h-6 text-yellow-600 shrink-0" />
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-yellow-800">Estación no seleccionada</h3>
+              <p className="text-yellow-700 mb-4">
+                Como administrador global, debes seleccionar una estación para generar sus reportes.
+              </p>
+              <div className="max-w-xs">
+                <select
+                  onChange={(e) => selectStation(e.target.value)}
+                  className="input border-yellow-300 focus:border-yellow-500 focus:ring-yellow-500"
+                >
+                  <option value="">Seleccione una estación...</option>
+                  {stations.map(st => (
+                    <option key={st.id} value={st.id}>{st.code} - {st.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner de error si no es admin y no hay estación (caso raro) */}
+      {!station && !isAdmin && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3">
+          <AlertCircle className="w-6 h-6 text-red-600" />
+          <p className="text-red-800">No tienes una estación asignada. Contacta al administrador.</p>
+        </div>
+      )}
 
       {/* Date Range Selector */}
       <div className="card">

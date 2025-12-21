@@ -120,38 +120,46 @@ const MenusPage = () => {
       const stationName = fullStation.name
 
       // 2. Format Message
-      const emojiMeal = menu.meal_type === MEAL_TYPES.LUNCH ? '☀️' : menu.meal_type === MEAL_TYPES.DINNER ? '🌙' : '☕'
+      const mealEmojis = {
+        [MEAL_TYPES.BREAKFAST]: '☕',
+        [MEAL_TYPES.LUNCH]: '☀️',
+        [MEAL_TYPES.DINNER]: '🌙'
+      }
+      const emojiMeal = mealEmojis[menu.meal_type] || '🍱'
       const mealLabel = MEAL_TYPE_LABELS[menu.meal_type]
       const dateStr = formatDate(menu.serve_date)
 
-      let message = `*${emojiMeal} MENÚ DEL DÍA - ${dateStr}*\n`
-      message += `*Estación:* ${stationName}\n`
-      message += `*Horario de Pedidos:* ${startTime} - ${endTime}\n\n`
+      let message = `*${emojiMeal} MENÚ - ${mealLabel} ${emojiMeal}*\n`
+      message += `📅 *Fecha:* ${dateStr}\n`
+      message += `🏢 *Estación:* ${stationName}\n`
+      message += `⏰ *Horario de Pedidos:* ${startTime} - ${endTime}\n`
+      message += `──────────────────────\n\n`
 
       if (menu.description) {
-        message += `_${menu.description}_\n\n`
+        message += `💡 *Nota:* _${menu.description}_\n\n`
       }
 
-      message += `*OPCIONES DISPONIBLES:*\n`
+      message += `✅ *OPCIONES DISPONIBLES:*\n`
 
       // Format Options
       const items = Array.isArray(menu.options) ? menu.options : []
-      let currentSection = null
 
       items.forEach(item => {
         if (typeof item === 'string' && item.startsWith('SECTION:')) {
-          currentSection = item.replace('SECTION:', '')
-          message += `\n*📌 ${currentSection}*\n`
+          const sectionTitle = item.replace('SECTION:', '')
+          message += `\n*📌 ${sectionTitle.toUpperCase()}*\n`
+        } else if (typeof item === 'string' && item.includes('|')) {
+          const [name, details] = item.split('|')
+          message += `🍛 *${name}*\n   └ _${details}_\n`
         } else {
-          message += `• ${item}\n`
+          message += `🍱 *${item}*\n`
         }
       })
 
-      message += `\n📲 *Realiza tu pedido aquí:* \n`
-      // Link to the specific station orders if possible, or just the app link
-      // Assuming app is accessible via some URL. For now using generic placeholder or window.location.origin
+      message += `\n──────────────────────\n`
+      message += `📲 *Realiza tu pedido aquí:* \n`
       const appUrl = window.location.origin + '/menu'
-      message += `${appUrl}`
+      message += `👉 ${appUrl}`
 
       // 3. Open WhatsApp
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
@@ -186,11 +194,18 @@ const MenusPage = () => {
           </li>
         )
       } else {
-        // Render Item
+        // Render Item (Support NAME|DETAILS)
+        const isString = typeof item === 'string'
+        const [name, details] = isString && item.includes('|') ? item.split('|') : [item, null]
+
         renderedItems.push(
-          <li key={`opt-${idx}`} className="flex items-center space-x-2 pl-2">
-            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-            <span className="text-sm text-gray-700 dark:text-gray-300">{item}</span>
+          <li key={`opt-${idx}`} className="flex flex-col pl-2 border-l-2 border-gray-100 dark:border-gray-700 my-1 py-1">
+            <span className="text-sm font-bold text-gray-800 dark:text-gray-200">{name}</span>
+            {details && (
+              <span className="text-xs text-gray-500 dark:text-gray-400 italic leading-tight">
+                {details}
+              </span>
+            )}
           </li>
         )
       }

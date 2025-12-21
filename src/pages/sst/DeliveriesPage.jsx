@@ -246,7 +246,7 @@ const DeliveriesPage = () => {
       // Load other resources (cached or full list for dropdowns)
       // Note: Employee list is full for dropdowns, filtered by Active
       const [employeesData, itemsData, areasData] = await Promise.all([
-        employeeService.getAll(station.id, { activeOnly: true }),
+        employeeService.getAll(station.id, { activeOnly: true }, 1, 1000).then(res => res.data),
         eppInventoryService.getAll(station.id),
         areaService.getAll(station.id, true)
       ])
