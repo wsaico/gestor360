@@ -9,6 +9,7 @@ const NotificationSettings = () => {
     const [settings, setSettings] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [testEmail, setTestEmail] = useState('')
 
     useEffect(() => {
         fetchSettings()
@@ -131,31 +132,61 @@ const NotificationSettings = () => {
                         />
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">Debe ser un dominio verificado en tu proveedor de correo.</p>
 
-                        <button
-                            onClick={async () => {
-                                try {
-                                    setSaving(true)
-                                    notify.success('Enviando prueba...')
-                                    const { data, error } = await supabase.functions.invoke('send-email-alerts', {
-                                        body: {
-                                            action: 'test_connection',
-                                            email: (await supabase.auth.getUser()).data.user.email
+                        <div className="flex items-end gap-2 mt-4">
+                            <div className="flex-1">
+                                <label className="label text-xs">Email para prueba (Opcional)</label>
+                                <input
+                                    type="email"
+                                    value={testEmail}
+                                    onChange={(e) => setTestEmail(e.target.value)}
+                                    className="input h-9 text-sm"
+                                    placeholder="ejemplo@correo.com"
+                                />
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        setSaving(true)
+                                        const targetEmail = testEmail || (await supabase.auth.getSession()).data.session?.user?.email
+                                        if (!targetEmail) throw new Error("Ingresa un correo para probar")
+
+                                        notify.success(`Enviando a: ${targetEmail}...`)
+
+                                        const { data: { session } } = await supabase.auth.getSession()
+                                        if (!session) throw new Error("No hay sesión activa")
+
+                                        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-alerts`, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Authorization': `Bearer ${session.access_token}`,
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({
+                                                action: 'test_connection',
+                                                email: targetEmail
+                                            })
+                                        })
+
+                                        const result = await response.json()
+
+                                        if (!response.ok) {
+                                            throw new Error(result.error || result.message || 'Error desconocido del servidor')
                                         }
-                                    })
-                                    if (error) throw error
-                                    notify.success('¡Éxito! Revisa tu bandeja de entrada.')
-                                } catch (e) {
-                                    console.error(e)
-                                    notify.error('Fallo la prueba: ' + e.message)
-                                } finally {
-                                    setSaving(false)
-                                }
-                            }}
-                            className="text-xs text-primary-600 hover:text-primary-800 font-bold flex items-center gap-1"
-                        >
-                            <Shield className="w-3 h-3" />
-                            Probar Conexión (Enviar correo a mi usuario)
-                        </button>
+
+                                        notify.success('¡Éxito! Revisa la bandeja de entrada.')
+                                    } catch (e) {
+                                        console.error(e)
+                                        notify.error('Fallo: ' + e.message)
+                                    } finally {
+                                        setSaving(false)
+                                    }
+                                }}
+                                className="btn btn-secondary h-9 text-xs inline-flex items-center space-x-1"
+                            >
+                                <Shield className="w-3 h-3" />
+                                <span>Probar Conexión</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

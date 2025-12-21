@@ -39,8 +39,13 @@ serve(async (req) => {
         const brevoKey = getSetting("BREVO_API_KEY");
         const senderEmail = getSetting("SMTP_SENDER_EMAIL") || "no-reply@gestor360.com";
 
+        if (!settings || settings.length === 0) {
+            throw new Error(`DEBUG: app_settings table is empty or unreadable. Count: ${settings ? settings.length : 'null'}`);
+        }
+
         if (!brevoKey) {
-            throw new Error("BREVO_API_KEY not configured in app_settings");
+            const visibleKeys = settings.map(s => s.key).join(", ");
+            throw new Error(`DEBUG: BREVO_API_KEY not found. Visible keys: [${visibleKeys}]`);
         }
 
         // Parse Request Body to check for specific actions
