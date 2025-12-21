@@ -11,7 +11,8 @@ import {
     MoreVertical,
     UtensilsCrossed,
     Download,
-    Plus // Add Plus icon
+    Plus,
+    AlertTriangle
 } from 'lucide-react'
 import SearchableSelect from '@components/common/SearchableSelect'
 import employeeService from '@services/employeeService' // Add employee service
@@ -46,6 +47,18 @@ const FoodOrdersPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [isAuditModalOpen, setIsAuditModalOpen] = useState(false) // Audit Modal
     const [missingEmployees, setMissingEmployees] = useState([]) // For Audit
+
+    // Confirmation Modal State
+    const [confirmation, setConfirmation] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirmar',
+        confirmColor: 'primary', // primary, red, green
+        onConfirm: null
+    })
+
+    // Init Logic to check URL params for date (deep linking)
     const [employees, setEmployees] = useState([])
     const [formData, setFormData] = useState({
         employee_id: '',
@@ -282,36 +295,56 @@ const FoodOrdersPage = () => {
         })
     }
 
-    const handleStatusChange = async (orderId, newStatus) => {
+    const handleStatusChange = (orderId, newStatus) => {
         // Validar permisos
         if (!isManager && newStatus === 'CONSUMED') {
             notify.warning('No tienes permisos para realizar esta acción')
             return
         }
 
-        if (!window.confirm(`¿Estás seguro de cambiar el estado a ${newStatus}?`)) return
-
-        try {
-            await foodOrderService.update(orderId, { status: newStatus })
-            loadOrders()
-            notify.success('Estado actualizado correctamente')
-        } catch (error) {
-            console.error('Error updating status:', error)
-            notify.error('Error al actualizar el estado')
-        }
+        setConfirmation({
+            isOpen: true,
+            title: 'Actualizar Estado',
+            message: `¿Estás seguro de cambiar el estado a ${newStatus}?`,
+            confirmText: 'Actualizar',
+            confirmColor: newStatus === 'CANCELLED' ? 'red' : 'primary',
+            onConfirm: async () => {
+                try {
+                    await foodOrderService.update(orderId, { status: newStatus })
+                    loadOrders()
+                    notify.success('Estado actualizado correctamente')
+                } catch (error) {
+                    console.error('Error updating status:', error)
+                    notify.error('Error al actualizar el estado')
+                }
+                closeConfirmation()
+            }
+        })
     }
 
-    const handleDelete = async (orderId) => {
-        if (!window.confirm('¿Estás seguro de eliminar este pedido permanentemente?')) return
+    const handleDelete = (orderId) => {
+        setConfirmation({
+            isOpen: true,
+            title: 'Eliminar Pedido',
+            message: '¿Estás seguro de eliminar este pedido permanentemente? Esta acción no se puede deshacer.',
+            confirmText: 'Eliminar',
+            confirmColor: 'red',
+            onConfirm: async () => {
+                try {
+                    await foodOrderService.delete(orderId)
+                    loadOrders()
+                    notify.success('Pedido eliminado correctamente')
+                } catch (error) {
+                    console.error('Error deleting order:', error)
+                    notify.error('Error al eliminar el pedido')
+                }
+                closeConfirmation()
+            }
+        })
+    }
 
-        try {
-            await foodOrderService.delete(orderId)
-            loadOrders()
-            notify.success('Pedido eliminado correctamente')
-        } catch (error) {
-            console.error('Error deleting order:', error)
-            notify.error('Error al eliminar el pedido')
-        }
+    const closeConfirmation = () => {
+        setConfirmation(prev => ({ ...prev, isOpen: false }))
     }
 
     // --- Export & Audit ---
@@ -968,6 +1001,51 @@ const FoodOrdersPage = () => {
                                             ))}
                                         </div>
                                     )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Confirmation Modal */}
+            <AnimatePresence>
+                {confirmation.isOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="p-6 text-center">
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmation.confirmColor === 'red' ? 'bg-red-100 text-red-600' : 'bg-primary-50 text-primary-600'
+                                    }`}>
+                                    <AlertTriangle size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                                    {confirmation.title}
+                                </h3>
+                                <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+                                    {confirmation.message}
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={closeConfirmation}
+                                        className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors dark:bg-gray-700 dark:text-gray-300"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={confirmation.onConfirm}
+                                        className={`flex-1 py-3 font-bold rounded-xl text-white shadow-lg transition-all active:scale-95 ${confirmation.confirmColor === 'red'
+                                                ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
+                                                : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
+                                            }`}
+                                    >
+                                        {confirmation.confirmText}
+                                    </button>
                                 </div>
                             </div>
                         </motion.div>
