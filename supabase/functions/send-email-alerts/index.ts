@@ -43,6 +43,40 @@ serve(async (req) => {
             throw new Error("BREVO_API_KEY not configured in app_settings");
         }
 
+        // Parse Request Body to check for specific actions
+        let body = {};
+        try { body = await req.json(); } catch (e) { }
+
+        // --- TEST CONNECTION MODE ---
+        if (body.action === 'test_connection') {
+            const targetEmail = body.email;
+            if (!targetEmail) throw new Error("Email required for test");
+
+            const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "api-key": brevoKey,
+                },
+                body: JSON.stringify({
+                    sender: { email: senderEmail, name: "Gestor360 Test" },
+                    to: [{ email: targetEmail }],
+                    subject: "[Gestor360] Prueba de Conexión SMTP",
+                    htmlContent: "<h1>¡Éxito!</h1><p>La conexión con Brevo funciona correctamente.</p>",
+                }),
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Brevo Error: ${errText}`);
+            }
+
+            return new Response(JSON.stringify({ success: true, message: "Test email sent" }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+        // -----------------------------
+
         // 3. FETCH DATA (based on toggles)
         let alerts = [];
 

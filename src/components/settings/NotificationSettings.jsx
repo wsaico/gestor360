@@ -129,7 +129,33 @@ const NotificationSettings = () => {
                             className="input"
                             placeholder="no-reply@tuempresa.com"
                         />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Debe ser un dominio verificado en tu proveedor de correo.</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">Debe ser un dominio verificado en tu proveedor de correo.</p>
+
+                        <button
+                            onClick={async () => {
+                                try {
+                                    setSaving(true)
+                                    notify.success('Enviando prueba...')
+                                    const { data, error } = await supabase.functions.invoke('send-email-alerts', {
+                                        body: {
+                                            action: 'test_connection',
+                                            email: (await supabase.auth.getUser()).data.user.email
+                                        }
+                                    })
+                                    if (error) throw error
+                                    notify.success('¡Éxito! Revisa tu bandeja de entrada.')
+                                } catch (e) {
+                                    console.error(e)
+                                    notify.error('Fallo la prueba: ' + e.message)
+                                } finally {
+                                    setSaving(false)
+                                }
+                            }}
+                            className="text-xs text-primary-600 hover:text-primary-800 font-bold flex items-center gap-1"
+                        >
+                            <Shield className="w-3 h-3" />
+                            Probar Conexión (Enviar correo a mi usuario)
+                        </button>
                     </div>
                 </div>
             </div>
