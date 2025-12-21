@@ -16,13 +16,12 @@ class FoodOrderService {
         .from('food_orders')
         .select(`
           *,
-          employee:employees!inner(id, full_name, dni, role_name, status),
+          employee:employees(id, full_name, dni, role_name, status),
           menu:menus(
             id,
             serve_date,
             options,
             provider:system_users!provider_id(id, username, email)
-          )
           )
         `)
         .order('menu_date', { ascending: false })

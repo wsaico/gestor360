@@ -15,9 +15,12 @@ class EppInventoryService {
       let query = supabase
         .from('epp_items')
         .select('*, area:areas(name)') // Join with areas
-        .eq('station_id', stationId)
         .eq('is_active', true)
         .order('name', { ascending: true })
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
 
       // Filtros opcionales
       if (filters.item_type) {
@@ -74,6 +77,28 @@ class EppInventoryService {
    */
   async create(itemData) {
     try {
+      // 1. Check for duplicates Manually because DB constraint might be missing
+      let query = supabase
+        .from('epp_items')
+        .select('id')
+        .eq('station_id', itemData.station_id)
+        .eq('is_active', true) // Only active items count as conflict
+
+      // If master product is linked, check by master_id
+      if (itemData.master_product_id) {
+        query = query.eq('master_product_id', itemData.master_product_id)
+      } else {
+        // Otherwise check by name (case insensitive)
+        query = query.ilike('name', itemData.name)
+      }
+
+      const { data: existing } = await query
+
+      if (existing && existing.length > 0) {
+        throw new Error('Ya existe un item con este nombre o producto maestro en esta estación (Validación de Aplicación).')
+      }
+
+      // 2. Proceed to Insert
       const { data, error } = await supabase
         .from('epp_items')
         .insert([itemData])
@@ -82,7 +107,7 @@ class EppInventoryService {
 
       if (error) {
         if (error.code === '23505') {
-          throw new Error('Ya existe un elemento con ese nombre y talla en esta estación')
+          throw new Error('Ya existe un item con este nombre o producto maestro (Validación DB).')
         }
         throw error
       }
@@ -234,9 +259,12 @@ class EppInventoryService {
           *,
           area:areas!area_id(id, name)
         `, { count: 'exact' })
-        .eq('station_id', stationId)
         .eq('is_active', true)
         .order('name', { ascending: true })
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
 
       if (filters.search) {
         query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
@@ -301,11 +329,16 @@ class EppInventoryService {
    */
   async getStats(stationId) {
     try {
-      const { data: items, error } = await supabase
+      let query = supabase
         .from('epp_items')
         .select('*')
-        .eq('station_id', stationId)
         .eq('is_active', true)
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
+
+      const { data: items, error } = await query
 
       if (error) throw error
 

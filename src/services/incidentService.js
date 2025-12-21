@@ -19,9 +19,12 @@ class IncidentService {
           employee:employees!employee_id(id, full_name, dni, role_name),
           reported_by_user:system_users!reported_by(username, email)
         `)
-        .eq('station_id', stationId)
         .order('incident_date', { ascending: false })
         .order('incident_time', { ascending: false })
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
 
       // Filtros opcionales
       if (filters.status) {
@@ -179,12 +182,17 @@ class IncidentService {
    */
   async getStats(stationId, startDate, endDate) {
     try {
-      const { data: incidents, error } = await supabase
+      let query = supabase
         .from('sst_incidents')
         .select('*')
-        .eq('station_id', stationId)
         .gte('incident_date', startDate)
         .lte('incident_date', endDate)
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
+
+      const { data: incidents, error } = await query
 
       if (error) throw error
 
@@ -247,12 +255,15 @@ class IncidentService {
       const startDate = new Date()
       startDate.setMonth(startDate.getMonth() - months)
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('sst_incidents')
         .select('incident_date, incident_type, severity')
-        .eq('station_id', stationId)
         .gte('incident_date', startDate.toISOString().split('T')[0])
         .order('incident_date', { ascending: true })
+
+      if (stationId) query = query.eq('station_id', stationId)
+
+      const { data, error } = await query
 
       if (error) throw error
 

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import supabase from './supabase'
+import emailService from './emailService'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -95,6 +96,12 @@ class SystemUserService {
                 }
                 throw error
             }
+
+            // 3. Enviar correo de bienvenida (No bloqueante)
+            emailService.sendWelcomeEmail(
+                { username: userData.username, email: userData.email },
+                userData.password
+            ).catch(err => console.error('Error enviando correo de bienvenida:', err))
 
             return data
         } catch (error) {

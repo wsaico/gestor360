@@ -100,10 +100,13 @@ const ItemPickerModal = ({
                         <div className="divide-y divide-gray-100 dark:divide-gray-700">
                             {filteredItems.map(item => {
                                 const hasStock = item.stock_current > 0
+                                const itemArea = areas.find(a => a.id === item.area_id)
+                                const areaName = itemArea ? itemArea.name : null // Only show if specific area
+
                                 return (
                                     <div
                                         key={item.id}
-                                        className={`p-4 gestor-tr-hover cursor-pointer flex items-center justify-between ${!hasStock ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}
+                                        className={`p-4 gestor-tr-hover cursor-pointer flex items-center justify-between group ${!hasStock ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}
                                         onClick={() => onSelect(item)}
                                     >
                                         <div className="flex-grow">
@@ -115,6 +118,12 @@ const ItemPickerModal = ({
                                                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300">
                                                         <Ruler className="w-3 h-3 mr-1" />
                                                         {item.size}
+                                                    </span>
+                                                )}
+                                                {areaName && (
+                                                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                        <Map className="w-3 h-3 mr-1" />
+                                                        {areaName}
                                                     </span>
                                                 )}
                                             </div>
@@ -142,7 +151,8 @@ const ItemPickerModal = ({
                                         </div>
                                     </div>
                                 )
-                            })}
+                            })
+                            }
                         </div>
                     )}
                 </div>
@@ -157,7 +167,7 @@ const ItemPickerModal = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     )
 }
 

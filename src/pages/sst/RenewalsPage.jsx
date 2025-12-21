@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from '@contexts/AuthContext'
 import { useNotification } from '@contexts/NotificationContext' // Added import
 import supabase from '@services/supabase'
 import deliveryService from '@services/deliveryService'
 import eppInventoryService from '@services/eppInventoryService'
 import employeeService from '@services/employeeService' // Added
+import reportService from '@services/reportService' // Added
 import SearchableSelect from '@components/common/SearchableSelect' // Added
 import SignatureCanvas from '@components/SignatureCanvas'
 import AddStockModal from '@components/sst/AddStockModal'
@@ -18,7 +20,10 @@ import {
   Calendar,
   Search,
   X,
-  Plus
+  Plus,
+  Sparkles,
+  ClipboardList,
+  Download
 } from 'lucide-react'
 import {
   RENEWAL_STATUS_LABELS
@@ -240,9 +245,6 @@ const RenewalsPage = () => {
       )
       notify.success('¡Renovación completada exitosamente!')
 
-      setShowSignatureModal(false)
-      // Reset State
-      setDeliveryId(null)
       setSigningStep(1)
       setResponsibleData({ name: '', position: '', employee_id: '' })
       setSelectedEmployee(null)
@@ -252,6 +254,31 @@ const RenewalsPage = () => {
     } catch (error) {
       console.error('Error saving responsible signature:', error)
       notify.error('Error al guardar la firma del responsable')
+    }
+  }
+
+  // --- EXCEL EXPORT PROFESSIONAL ---
+  const handleExportExcel = async () => {
+    try {
+      if (employeeGroups.length === 0) {
+        notify.warning('No hay datos para exportar')
+        return
+      }
+
+      // Use the Centralized Report Service for Professional Formatting
+      const blob = await reportService.generateRenewalsReport(
+        employeeGroups,
+        station.name,
+        items // Pass inventory items for Stock lookup
+      )
+
+      const fileName = `Reporte_Reposicion_${station?.name || 'General'}_${new Date().toISOString().split('T')[0]}.xlsx`
+      reportService.downloadBlob(blob, fileName)
+
+      notify.success('Reporte de Compra exportado correctamente con formato profesional')
+    } catch (error) {
+      console.error('Error exporting excel:', error)
+      notify.error('Error al exportar reporte: ' + error.message)
     }
   }
 
@@ -321,7 +348,7 @@ const RenewalsPage = () => {
     if (!acc[key]) {
       acc[key] = {
         employee_id: renewal.employee_id,
-        employee_name: `${renewal.first_name} ${renewal.last_name}`,
+        employee_name: renewal.full_name,
         dni: renewal.dni,
         role_name: renewal.role_name,
         area: renewal.area,
@@ -364,13 +391,20 @@ const RenewalsPage = () => {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Renovaciones Pendientes</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Renovaciones Pendientes</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
               Control de EPPs y Uniformes que requieren renovación
             </p>
           </div>
+          <button
+            onClick={handleExportExcel}
+            className="btn btn-secondary flex items-center gap-2 shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Reposición</span>
+          </button>
         </div>
 
         {/* KPIs */}
@@ -452,245 +486,271 @@ const RenewalsPage = () => {
           </div>
         </div>
 
-        {/* Employee Groups */}
         {employeeGroups.length === 0 ? (
-          <div className="card">
-            <div className="text-center py-12">
-              <CheckCircle className="w-16 h-16 text-green-300 mx-auto mb-4" />
-              <p className="text-gray-500">No hay renovaciones pendientes</p>
-              <p className="text-sm text-gray-400 mt-2">
-                Todos los EPPs y uniformes están al día
-              </p>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 text-center border border-gray-100 dark:border-gray-700 shadow-sm">
+            <div className="bg-green-100 dark:bg-green-900/30 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
             </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">¡Todo al día!</h3>
+            <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+              No hay renovaciones pendientes en este momento. Todos los EPPs y uniformes están vigentes.
+            </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {employeeGroups.map((group) => (
-              <div key={group.employee_id} className="card">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start space-x-4">
-                    <div className="p-3 bg-gray-100 rounded-lg">
-                      <User className="w-6 h-6 text-gray-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {group.employee_name}
-                      </h3>
-                      <div className="flex items-center space-x-4 mt-1 text-sm text-gray-500">
-                        <span>DNI: {group.dni}</span>
-                        <span>•</span>
-                        <span>{group.role_name}</span>
-                        <span>•</span>
-                        <span>{group.area}</span>
-                      </div>
-                      <div className="mt-2">
-                        <span className="text-sm font-medium text-gray-700">
-                          {group.items.length} item{group.items.length !== 1 ? 's' : ''} pendiente{group.items.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleRenewEmployee(group.employee_id, group.employee_name)}
-                    className="btn btn-primary btn-sm inline-flex items-center space-x-2"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Renovar</span>
-                  </button>
-                </div>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-700">
+                <thead className="bg-gray-50/50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Empleado</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cargo / Área</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estado de Items</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  <AnimatePresence>
+                    {employeeGroups.map((group, index) => {
+                      // Calculate summary stats for this employee
+                      const expiredCount = group.items.filter(i => calculateDaysDiff(i.renewal_date) < 0).length
+                      const expiringCount = group.items.filter(i => {
+                        const d = calculateDaysDiff(i.renewal_date)
+                        return d >= 0 && d <= 30
+                      }).length
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Item</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Tipo</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cantidad</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fecha Entrega</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fecha Renovación</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {group.items.map((item) => {
-                        // CALCULAR UNA SOLA VEZ
-                        const diffDays = calculateDaysDiff(item.renewal_date)
-
-                        return (
-                          <tr key={item.id}>
-                            <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                              {item.item_name}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
-                              {item.item_type}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-900">
-                              {item.quantity}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
-                              {new Date(item.delivery_date).toLocaleDateString('es-PE')}
-                            </td>
-                            <td className="px-4 py-2 text-sm">
-                              <div className="flex items-center space-x-2">
-                                <Calendar className="w-4 h-4 text-gray-400" />
-                                <span className={diffDays < 0 ? 'text-red-600 font-semibold' : 'text-gray-900'}>
-                                  {new Date(item.renewal_date).toLocaleDateString('es-PE')}
+                      return (
+                        <motion.tr
+                          key={group.employee_id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: index * 0.05 }}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
+                                {group.employee_name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="font-bold text-gray-900 dark:text-white text-sm">{group.employee_name}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">{group.dni || 'Sin DNI'}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{group.role_name || '-'}</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{group.area || '-'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              {expiredCount > 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-200 dark:border-red-800">
+                                  <AlertTriangle size={12} className="mr-1" />
+                                  {expiredCount} Vencidos
                                 </span>
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                {/* USAR EL MISMO VALOR CALCULADO */}
-                                {getDaysOverdueText(diffDays)}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              {/* USAR EL MISMO VALOR CALCULADO */}
-                              {getRenewalStatusBadge(diffDays)}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+                              )}
+                              {expiringCount > 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800">
+                                  <Clock size={12} className="mr-1" />
+                                  {expiringCount} Por Vencer
+                                </span>
+                              )}
+                              {expiredCount === 0 && expiringCount === 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 border border-green-200 dark:border-green-800">
+                                  <CheckCircle size={12} className="mr-1" />
+                                  OK
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => handleRenewEmployee(group.employee_id, group.employee_name)}
+                              className="btn btn-secondary btn-sm inline-flex items-center gap-2 group"
+                              title="Ver detalles y renovar"
+                            >
+                              <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500 text-primary-600" />
+                              <span className="font-bold text-primary-700 dark:text-primary-400">Ver Detalles</span>
+                            </button>
+                          </td>
+                        </motion.tr>
+                      )
+                    })}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
       </div>
 
-      {/* Renewal Modal */}
-      {showRenewalModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"></div>
-
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
-              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Renovar Items - {selectedEmployee?.name}
+      {/* Renewal Modal - REDESIGNED PREMIUM MODERN UX */}
+      <AnimatePresence>
+        {showRenewalModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-gray-800 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-green-600" />
+                    Renovar Items
                   </h3>
-                  <button
-                    onClick={() => {
-                      setShowRenewalModal(false)
-                      setSelectedEmployee(null)
-                      setSelectedItems([])
-                    }}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Empleado: <span className="font-bold text-gray-700 dark:text-gray-200">{selectedEmployee?.name}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowRenewalModal(false)
+                    setSelectedEmployee(null)
+                    setSelectedItems([])
+                  }}
+                  className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-700">
+
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 flex gap-3 items-start mb-6">
+                  <ClipboardList className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">Selección de Items</h4>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Seleccione los elementos de la lista que desea renovar. Los items sin stock no pueden ser seleccionados.
+                    </p>
+                  </div>
                 </div>
 
-                <p className="text-sm text-gray-600 mb-4">
-                  Seleccione los items que desea renovar:
-                </p>
+                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                        <tr>
+                          <th className="px-5 py-3 text-left w-12">
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.length > 0 && selectedItems.every(i => i.selected || (items.find(st => st.id === i.item_id)?.stock_current < i.quantity))}
+                              onChange={(e) => {
+                                const checked = e.target.checked
+                                setSelectedItems(prev => prev.map(item => {
+                                  // Solo marcar si tiene stock
+                                  const itemData = items.find(i => i.id === item.item_id)
+                                  const hasStock = itemData && itemData.stock_current >= item.quantity
+                                  return hasStock ? { ...item, selected: checked } : item
+                                }))
+                              }}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                            />
+                          </th>
+                          <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Detalle del Item</th>
+                          <th className="px-5 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estado Actual</th>
+                          <th className="px-5 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Disponibilidad</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {selectedItems.map((item) => {
+                          const itemData = items.find(i => i.id === item.item_id)
+                          const hasStock = itemData && itemData.stock_current >= item.quantity
+                          const diffDays = calculateDaysDiff(item.renewal_date)
 
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left">
-                          <input
-                            type="checkbox"
-                            checked={selectedItems.every(i => i.selected)}
-                            onChange={(e) => {
-                              const checked = e.target.checked
-                              setSelectedItems(prev => prev.map(item => ({ ...item, selected: checked })))
-                            }}
-                            className="rounded border-gray-300"
-                          />
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Item</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Tipo</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cantidad</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Estado</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Stock</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedItems.map((item) => {
-                        const itemData = items.find(i => i.id === item.item_id)
-                        const hasStock = itemData && itemData.stock_current >= item.quantity
-                        // Calcular estado dinámico
-                        const diffDays = calculateDaysDiff(item.renewal_date)
-
-                        return (
-                          <tr key={item.id} className={!hasStock ? 'bg-red-50' : ''}>
-                            <td className="px-4 py-2">
-                              <input
-                                type="checkbox"
-                                checked={item.selected}
-                                onChange={() => handleToggleItem(item.id)}
-                                disabled={!hasStock}
-                                className="rounded border-gray-300"
-                              />
-                            </td>
-                            <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                              {item.item_name}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
-                              {item.item_type}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-900">
-                              {item.quantity}
-                            </td>
-                            <td className="px-4 py-2">
-                              {getRenewalStatusBadge(diffDays)}
-                            </td>
-                            <td className="px-4 py-2 text-sm">
-                              {hasStock ? (
-                                <span className="text-green-600">
-                                  Disponible: {itemData.stock_current}
-                                </span>
-                              ) : (
-                                <div className="flex flex-col items-start">
-                                  <span className="text-red-600 font-semibold mb-1">
-                                    Sin stock
+                          return (
+                            <motion.tr
+                              key={item.id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className={`group transition-colors ${!hasStock ? 'bg-red-50/50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
+                            >
+                              <td className="px-5 py-4">
+                                <input
+                                  type="checkbox"
+                                  checked={item.selected}
+                                  onChange={() => handleToggleItem(item.id)}
+                                  disabled={!hasStock}
+                                  className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${!hasStock ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                />
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex flex-col">
+                                  <span className={`font-bold text-sm ${!hasStock ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                                    {item.item_name}
                                   </span>
-                                  {/* Add Stock Quick Button */}
-                                  <button
-                                    onClick={(e) => handleOpenStockModal(e, item.item_id)}
-                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium inline-flex items-center"
-                                  >
-                                    <Plus className="w-3 h-3 mr-1" />
-                                    Agregar
-                                  </button>
+                                  <span className="text-xs text-gray-400 mt-0.5">
+                                    Cant: {item.quantity} • {item.item_type}
+                                  </span>
                                 </div>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex justify-end space-x-2 mt-6">
-                  <button
-                    onClick={() => {
-                      setShowRenewalModal(false)
-                      setSelectedEmployee(null)
-                      setSelectedItems([])
-                    }}
-                    className="btn btn-secondary btn-md"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleSubmitRenewal}
-                    className="btn btn-primary btn-md inline-flex items-center"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Crear Renovación
-                  </button>
+                              </td>
+                              <td className="px-5 py-4 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  {getRenewalStatusBadge(diffDays)}
+                                  <span className="text-[10px] text-gray-400">
+                                    Vence: {new Date(item.renewal_date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4 text-center">
+                                {hasStock ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                    Stock: {itemData.stock_current}
+                                  </span>
+                                ) : (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                                      Sin Stock
+                                    </span>
+                                    {/* Quick Add Stock */}
+                                    <button
+                                      onClick={(e) => handleOpenStockModal(e, item.item_id)}
+                                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
+                                    >
+                                      <Plus size={10} /> AGREGAR
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </motion.tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3 z-10">
+                <button
+                  onClick={() => {
+                    setShowRenewalModal(false)
+                    setSelectedEmployee(null)
+                    setSelectedItems([])
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSubmitRenewal}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Sparkles size={18} className="animate-pulse" />
+                  Generar Renovación
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Signature Wizard Modal (Unified Steps) */}
       {showSignatureModal && (

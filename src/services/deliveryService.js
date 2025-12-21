@@ -31,9 +31,12 @@ class DeliveryService {
           employee:employees!employee_id(id, full_name, dni, role_name),
           delivered_by_user:system_users!delivered_by(username, email)
         `, { count: 'exact' })
-        .eq('station_id', stationId)
         .order('delivery_date', { ascending: false })
         .order('created_at', { ascending: false })
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
 
       // Filtros opcionales
       if (filters.employeeId) query = query.eq('employee_id', filters.employeeId)
@@ -66,9 +69,12 @@ class DeliveryService {
           employee:employees!employee_id(id, full_name, dni, role_name),
           delivered_by_user:system_users!delivered_by(username, email)
         `)
-        .eq('station_id', stationId)
         .order('delivery_date', { ascending: false })
         .order('created_at', { ascending: false })
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
 
       if (filters.employeeId) query = query.eq('employee_id', filters.employeeId)
       if (filters.status) query = query.eq('status', filters.status)
@@ -211,6 +217,84 @@ class DeliveryService {
   }
 
   /**
+   * Elimina un item de una entrega y revierte sus efectos (stock, asignación)
+   * @param {string} deliveryId - ID de la entrega
+   * @param {Object} itemToRemove - Datos del item { item_id, quantity }
+   * @param {number} itemIndex - Índice en el array de items (para precisión)
+   */
+  async removeItem(deliveryId, itemToRemove, itemIndex) {
+    try {
+      // 1. Obtener entrega actual
+      const { data: delivery, error: fetchError } = await supabase
+        .from('epp_deliveries')
+        .select('items, station_id')
+        .eq('id', deliveryId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      // 2. Validar y crear nuevo array de items sin el eliminado
+      const currentItems = delivery.items || []
+      if (itemIndex < 0 || itemIndex >= currentItems.length) {
+        throw new Error('Índice de item no válido')
+      }
+
+      // Verificación de seguridad extra
+      const targetItem = currentItems[itemIndex]
+      if (targetItem.item_id !== itemToRemove.item_id) {
+        console.warn('Posible desajuste de índices al eliminar item', targetItem, itemToRemove)
+      }
+
+      const newItems = [...currentItems]
+      newItems.splice(itemIndex, 1)
+
+      // 3. Actualizar la entrega con el nuevo array (o eliminar entrega si era el último)
+      /* 
+         Si nos quedamos sin items, ¿deberíamos eliminar toda la entrega?
+         Por seguridad, dejémosla vacía por ahora, o el frontend puede manejar borrar la entrega completa.
+      */
+
+      const { error: updateError } = await supabase
+        .from('epp_deliveries')
+        .update({ items: newItems })
+        .eq('id', deliveryId)
+
+      if (updateError) throw updateError
+
+      // 4. Restaurar Stock
+      // Importante: Pasamos cantidad positiva para sumar
+      // 4. Restaurar Stock
+      // Importante: Pasamos cantidad positiva para sumar
+      await eppInventoryService.adjustStock(
+        itemToRemove.item_id,
+        Math.abs(itemToRemove.quantity),
+        'ENTRADA',
+        `Corrección de entrega - Item eliminado de entrega ${deliveryId}`,
+        null, // El usuario actual se inferirá o pasaremos null si no es crítico
+        'RETURN',
+        deliveryId
+      )
+
+      // 5. Eliminar Asignación (Active Assignment)
+      const { error: deleteError } = await supabase
+        .from('employee_epp_assignments')
+        .delete()
+        .eq('delivery_id', deliveryId)
+        .eq('item_id', itemToRemove.item_id)
+
+      if (deleteError) {
+        console.error('Error eliminando asignación, aunque el stock se restauró:', deleteError)
+        // No lanzamos error para no bloquear el flujo completo, pero es una inconsistencia
+      }
+
+      return true
+    } catch (error) {
+      console.error('Error removing item from delivery:', error)
+      throw error
+    }
+  }
+
+  /**
    * Firma una entrega (firma de empleado)
    * @param {string} id - ID de la entrega
    * @param {string} signatureData - Firma en Base64
@@ -313,7 +397,7 @@ class DeliveryService {
           await eppInventoryService.adjustStock(
             item.item_id,
             item.quantity,
-            'AJUSTE',
+            'ENTRADA',
             `Devolución por cancelación de entrega: ${reason}`,
             null,
             'CANCELLATION',
@@ -341,8 +425,64 @@ class DeliveryService {
 
       if (error) throw error
       return data
+      if (error) throw error
+      return data
     } catch (error) {
       console.error('Error canceling delivery:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Elimina FÍSICAMENTE una entrega (Hard Delete)
+   * Útil para errores de registro en entregas pendientes.
+   * Restaura stock y elimina asignaciones.
+   * @param {string} id - ID de la entrega
+   * @returns {Promise<void>}
+   */
+  async delete(id) {
+    try {
+      // 1. Obtener la entrega y sus items
+      const delivery = await this.getById(id)
+
+      if (!delivery) throw new Error('Entrega no encontrada')
+
+      // Permitimos eliminar incluso si está firmada si es ADMIN? 
+      // Por ahora restringimos a PENDING para seguridad básica, o dejamos abierto y el frontend controla.
+      // Vamos a permitirlo, asumiendo que el frontend valida el estado.
+
+      // 2. Restaurar Stock
+      if (Array.isArray(delivery.items)) {
+        for (const item of delivery.items) {
+          await eppInventoryService.adjustStock(
+            item.item_id,
+            item.quantity,
+            'ENTRADA', // Tipo válido
+            `Restauración por eliminación de entrega ${delivery.document_code}`,
+            null,
+            'RETURN',
+            id
+          )
+        }
+      }
+
+      // 3. Eliminar asignaciones (Cascade delete podría manejarlo, pero mejor explícito)
+      await supabase
+        .from('employee_epp_assignments')
+        .delete()
+        .eq('delivery_id', id)
+
+      // 4. Eliminar la entrega
+      const { error } = await supabase
+        .from('epp_deliveries')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      return true
+    } catch (error) {
+      console.error('Error deleting delivery:', error)
       throw error
     }
   }
@@ -469,12 +609,17 @@ class DeliveryService {
    */
   async getStats(stationId, startDate, endDate) {
     try {
-      const { data: deliveries, error } = await supabase
+      let query = supabase
         .from('epp_deliveries')
         .select('*')
-        .eq('station_id', stationId)
         .gte('delivery_date', startDate)
         .lte('delivery_date', endDate)
+
+      if (stationId) {
+        query = query.eq('station_id', stationId)
+      }
+
+      const { data: deliveries, error } = await query
 
       if (error) throw error
 

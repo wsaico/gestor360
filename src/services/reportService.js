@@ -447,6 +447,113 @@ export const generateMissingOrdersReport = async (stationId, startDate, endDate,
   }
 }
 
+/**
+ * Genera el Reporte de Renovaciones (Reposición)
+ */
+export const generateRenewalsReport = async (employeeGroups, stationName, itemsInventory) => {
+  try {
+    const wb = XLSX.utils.book_new()
+
+    // Headers
+    const headerRow = [
+      createCell('EMPLEADO', STYLE_HEADER),
+      createCell('DNI', STYLE_HEADER),
+      createCell('CARGO', STYLE_HEADER),
+      createCell('ÁREA', STYLE_HEADER),
+      createCell('ITEM (DESCRIPCIÓN)', STYLE_HEADER),
+      createCell('TALLA', STYLE_HEADER),
+      createCell('CANTIDAD', STYLE_HEADER),
+      createCell('STOCK ALMACÉN', STYLE_HEADER),
+      createCell('ESTADO', STYLE_HEADER),
+      createCell('VENCIMIENTO', STYLE_HEADER),
+      createCell('OBSERVACIONES', STYLE_HEADER)
+    ]
+
+    const rows = []
+
+    employeeGroups.forEach(group => {
+      group.items.forEach(item => {
+        // Logic needed here again or passed in? 
+        // We will recalculate logic here to keep it self-contained or assume passed data is raw
+        // Logic for days diff
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const renewal = new Date(item.renewal_date)
+        renewal.setHours(0, 0, 0, 0)
+        const diffTime = renewal.getTime() - today.getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        let status = 'VIGENTE'
+        if (diffDays < 0) status = 'VENCIDO'
+        else if (diffDays <= 30) status = 'POR_VENCER'
+
+        // Stock lookup
+        const inventoryItem = itemsInventory.find(i => i.id === item.item_id)
+        const currentStock = inventoryItem ? inventoryItem.stock_current : 0
+
+        // Styles for Status
+        let statusStyle = STYLE_CELL_CENTER
+        if (status === 'VENCIDO') statusStyle = { ...STYLE_CELL_CENTER, font: { color: { rgb: "EF4444" }, bold: true } }
+        if (status === 'POR_VENCER') statusStyle = { ...STYLE_CELL_CENTER, font: { color: { rgb: "F59E0B" }, bold: true } }
+
+        rows.push([
+          createCell(group.employee_name, STYLE_CELL),
+          createCell(group.dni || '-', STYLE_CELL_CENTER),
+          createCell(group.role_name || '-', STYLE_CELL),
+          createCell(group.area || '-', STYLE_CELL_CENTER),
+          createCell(item.item_name, STYLE_CELL),
+          createCell(item.size || 'ÚNICA', STYLE_CELL_CENTER),
+          createCell(item.quantity, STYLE_CELL_CENTER),
+          createCell(currentStock, STYLE_CELL_CENTER), // Stock
+          createCell(status, statusStyle),
+          createCell(formatDate(item.renewal_date), STYLE_CELL_CENTER),
+          createCell(status === 'VENCIDO' ? 'URGENTE' : '', STYLE_CELL)
+        ])
+      })
+    })
+
+    const wsData = [
+      [createCell('REPORTE DE NECESIDAD DE REPOSICIÓN - EPPs Y UNIFORMES', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Fecha de Corte: ${formatDate(new Date().toISOString())}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      headerRow,
+      ...rows
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // Column Widths
+    ws['!cols'] = [
+      { wch: 30 }, // Empleado
+      { wch: 12 }, // DNI
+      { wch: 20 }, // Cargo
+      { wch: 15 }, // Area
+      { wch: 35 }, // Item
+      { wch: 10 }, // Talla
+      { wch: 10 }, // Cantidad
+      { wch: 15 }, // Stock
+      { wch: 15 }, // Estado
+      { wch: 12 }, // Vencimiento
+      { wch: 20 }  // Obs
+    ]
+
+    // Merge Title
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Reposición')
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
+  } catch (error) {
+    console.error('Error generating renewals report:', error)
+    throw error
+  }
+}
+
 export const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -463,5 +570,6 @@ export default {
   generateDiscountReport,
   generateBillingReport,
   downloadBlob,
-  generateMissingOrdersReport
+  generateMissingOrdersReport,
+  generateRenewalsReport // Added
 }

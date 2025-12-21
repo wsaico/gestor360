@@ -28,7 +28,7 @@ import { useNotification } from '@contexts/NotificationContext'
 import * as XLSX from 'xlsx' // Add XLSX import
 
 const FoodOrdersPage = () => {
-    const { user, hasRole } = useAuth()
+    const { user, station, hasRole } = useAuth()
     const { notify } = useNotification() // Hook
     const [loading, setLoading] = useState(false)
     const [orders, setOrders] = useState([])
@@ -81,10 +81,18 @@ const FoodOrdersPage = () => {
     useEffect(() => {
         if (hasRole(ROLES.ADMIN)) {
             loadStations()
-        } else if (user?.station_id) {
-            setSelectedStationId(user.station_id)
         }
-    }, [user])
+        // Sync with Global Station Context (Header Selector)
+        if (station) {
+            setSelectedStationId(station.id)
+        } else if (user?.station_id) {
+            // Fallback to user assigned station if not global admin context
+            setSelectedStationId(user.station_id)
+        } else {
+            // Global Admin with no station selected -> Show All (empty string)
+            setSelectedStationId('')
+        }
+    }, [user, station]) // Add station to dependency
 
     useEffect(() => {
         // Allow loading with empty stationId (Global View) for Admins

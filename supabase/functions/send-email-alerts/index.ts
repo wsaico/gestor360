@@ -145,6 +145,29 @@ serve(async (req) => {
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
+        // --- NEW: Generic Send Email Action ---
+        if (body.action === 'send_email') {
+            const { to, subject, html } = body;
+
+            if (!to || !subject || !html) {
+                throw new Error("Missing parameters for send_email action");
+            }
+
+            const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "api-key": brevoKey },
+                body: JSON.stringify({
+                    sender: { email: senderEmail, name: "Gestor360 System" },
+                    to: [{ email: to }],
+                    subject: subject,
+                    htmlContent: html,
+                }),
+            });
+
+            if (!res.ok) throw new Error(`Brevo Error: ${await res.text()}`);
+            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
         // 3. COLLECT ALERTS
         let allAlerts = [];
 

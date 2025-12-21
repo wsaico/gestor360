@@ -23,13 +23,11 @@ const MasterCatalogPage = () => {
     const { user } = useAuth()
 
     const [products, setProducts] = useState([])
-    const [categories, setCategories] = useState([])
     const [types, setTypes] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
 
     // Filters
-    const [filterCategory, setFilterCategory] = useState('ALL')
     const [filterType, setFilterType] = useState('ALL')
 
     // Pagination
@@ -44,16 +42,13 @@ const MasterCatalogPage = () => {
         name: '',
         sap_code: '',
         description: '',
-        category_id: '',
         type_id: '',
         base_price: 0,
         unit_measurement: 'UNIDAD',
         image_url: ''
     })
 
-    // Category Modal
-    const [showCategoryModal, setShowCategoryModal] = useState(false)
-    const [categoryForm, setCategoryForm] = useState({ name: '', description: '' })
+
 
     // Type Modal
     const [showTypeModal, setShowTypeModal] = useState(false)
@@ -65,7 +60,7 @@ const MasterCatalogPage = () => {
 
     useEffect(() => {
         fetchProducts()
-    }, [page, filterCategory, filterType])
+    }, [page, filterType])
 
     // Debounced search
     useEffect(() => {
@@ -78,11 +73,7 @@ const MasterCatalogPage = () => {
 
     const fetchMetadata = async () => {
         try {
-            const [cats, typs] = await Promise.all([
-                masterProductService.getCategories(),
-                masterProductService.getTypes()
-            ])
-            setCategories(cats)
+            const typs = await masterProductService.getTypes()
             setTypes(typs)
         } catch (error) {
             console.error('Error fetching metadata', error)
@@ -96,7 +87,6 @@ const MasterCatalogPage = () => {
                 page,
                 limit: ITEMS_PER_PAGE,
                 search: searchTerm,
-                categoryId: filterCategory,
                 typeId: filterType
             })
             setProducts(data || [])
@@ -120,7 +110,6 @@ const MasterCatalogPage = () => {
                 name: product.name,
                 sap_code: product.sap_code,
                 description: product.description || '',
-                category_id: product.category_id || '',
                 type_id: product.type_id || '',
                 base_price: product.base_price || 0,
                 unit_measurement: product.unit_measurement || 'UNIDAD',
@@ -132,7 +121,6 @@ const MasterCatalogPage = () => {
                 name: '',
                 sap_code: '',
                 description: '',
-                category_id: '',
                 type_id: '',
                 base_price: 0,
                 unit_measurement: 'UNIDAD',
@@ -170,20 +158,7 @@ const MasterCatalogPage = () => {
         }
     }
 
-    // --- CATEGORY HANDLERS ---
-    const handleCreateCategory = async (e) => {
-        e.preventDefault()
-        try {
-            const newCat = await masterProductService.createCategory(categoryForm)
-            notify.success('Categoría creada')
-            setShowCategoryModal(false)
-            setCategoryForm({ name: '', description: '' })
-            fetchMetadata() // Refresh lists
-            setFormData(prev => ({ ...prev, category_id: newCat.id })) // Auto-select
-        } catch (error) {
-            notify.error('Error: ' + error.message)
-        }
-    }
+
 
     // --- TYPE HANDLERS ---
     const handleCreateType = async (e) => {
@@ -206,7 +181,6 @@ const MasterCatalogPage = () => {
                 'CODIGO_SAP': '1001',
                 'NOMBRE': 'Ejemplo Producto',
                 'TIPO': 'EPP', // Auto-create
-                'CATEGORIA': 'Guantes', // Auto-create
                 'PRECIO_BASE': 10.50,
                 'UNIDAD': 'UNIDAD',
                 'DESCRIPCION': 'Descripción del producto'
@@ -281,18 +255,6 @@ const MasterCatalogPage = () => {
                             ))}
                         </select>
                     </div>
-                    <div>
-                        <select
-                            value={filterCategory}
-                            onChange={(e) => setFilterCategory(e.target.value)}
-                            className="input w-full"
-                        >
-                            <option value="ALL">Todas las Categorías</option>
-                            {categories.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    </div>
                 </div>
 
                 <div className="mt-6 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
@@ -302,7 +264,6 @@ const MasterCatalogPage = () => {
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">SKU / SAP</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Categoría</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                                 <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                             </tr>
@@ -325,11 +286,7 @@ const MasterCatalogPage = () => {
                                                 {product.type?.name || '-'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="px-2 py-1 text-xs rounded-md bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">
-                                                {product.category?.name || '-'}
-                                            </span>
-                                        </td>
+
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
                                             S/ {Number(product.base_price).toFixed(2)}
                                         </td>
@@ -430,24 +387,6 @@ const MasterCatalogPage = () => {
                                     </select>
                                 </div>
 
-                                <div className="col-span-2 md:col-span-1">
-                                    <label className="label flex justify-between">
-                                        Categoría
-                                        <button type="button" onClick={() => setShowCategoryModal(true)} className="text-xs text-primary-600 hover:underline font-bold">+ Crear Nueva</button>
-                                    </label>
-                                    <select
-                                        value={formData.category_id}
-                                        onChange={e => setFormData({ ...formData, category_id: e.target.value })}
-                                        className="input w-full"
-                                        required
-                                    >
-                                        <option value="">-- Seleccionar Categoría --</option>
-                                        {categories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
                                 <div className="col-span-2">
                                     <label className="label">Descripción</label>
                                     <textarea
@@ -519,40 +458,7 @@ const MasterCatalogPage = () => {
                 </div>
             )}
 
-            {/* CREATE CATEGORY MODAL */}
-            {showCategoryModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl border-t-4 border-blue-500">
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Nueva Categoría</h3>
-                        <form onSubmit={handleCreateCategory} className="space-y-4">
-                            <div>
-                                <label className="label">Nombre (Ej: Guantes, Cascos)</label>
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    value={categoryForm.name}
-                                    onChange={e => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                                    className="input w-full"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="label">Descripción</label>
-                                <input
-                                    type="text"
-                                    value={categoryForm.description}
-                                    onChange={e => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                                    className="input w-full"
-                                />
-                            </div>
-                            <div className="flex justify-end gap-2 pt-2">
-                                <button type="button" onClick={() => setShowCategoryModal(false)} className="btn btn-secondary btn-sm">Cancelar</button>
-                                <button type="submit" className="btn btn-primary btn-sm">Crear Categoría</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+
         </div>
     )
 }

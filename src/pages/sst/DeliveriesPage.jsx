@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from '@contexts/AuthContext'
 import { useNotification } from '@contexts/NotificationContext'
 import deliveryService from '@services/deliveryService'
@@ -11,6 +12,8 @@ import { generateDeliveryPDF } from '@utils/pdfGenerator'
 import AddStockModal from '@components/sst/AddStockModal'
 import SearchableSelect from '@components/common/SearchableSelect'
 import ItemPickerModal from '@components/sst/ItemPickerModal'
+import ConfirmDialog from '@components/ConfirmDialog'
+import CancellationModal from '@components/common/CancellationModal'
 import {
   Plus,
   Search,
@@ -25,7 +28,13 @@ import {
   CheckCircle,
   Clock,
   Map,
-  Filter
+  Filter,
+  Sparkles,
+  User,
+  Calendar,
+  ClipboardList,
+  ChevronRight,
+  ShoppingCart
 } from 'lucide-react'
 import {
   DELIVERY_STATUS,
@@ -61,6 +70,23 @@ const DeliveriesPage = () => {
   const [selectedDelivery, setSelectedDelivery] = useState(null)
   const [signatureType, setSignatureType] = useState(null)
   const [signingStep, setSigningStep] = useState(1)
+  const [activeTab, setActiveTab] = useState('general') // 'general', 'items'
+
+  const [selectedDeliveryDetails, setSelectedDeliveryDetails] = useState(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+
+  // Custom Confirmation
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    type: 'danger'
+  })
+
+  // Cancellation Modal State
+  const [showCancellationModal, setShowCancellationModal] = useState(false)
+  const [deliveryToCancel, setDeliveryToCancel] = useState(null)
 
   // ... (previous state)
 
@@ -177,11 +203,12 @@ const DeliveriesPage = () => {
   }
 
   useEffect(() => {
-    if (station?.id) {
+    // Trigger fetch if station changes OR if I am admin (and station might be null)
+    if (station?.id || user?.role === 'ADMIN') {
       fetchData(1) // Load page 1 on mount/station change
       fetchSettings()
     }
-  }, [station?.id])
+  }, [station?.id, user?.role])
 
   const [appSettings, setAppSettings] = useState({})
 
@@ -226,29 +253,30 @@ const DeliveriesPage = () => {
 
   // Effect to reload when page changes
   useEffect(() => {
-    if (station?.id) {
+    if (station?.id || user?.role === 'ADMIN') {
       fetchData(page)
     }
   }, [page])
 
   const fetchData = async (currentPage = 1) => {
-    if (!station?.id) return
+    // Si no hay estación y NO es admin global, no cargar nada.
+    if (!station?.id && user?.role !== 'ADMIN') return
 
     try {
       setLoading(true)
+      const targetStationId = station?.id || null
 
       // Load Deliveries Paginated
-      const { data: deliveriesData, count } = await deliveryService.getPaginated(station.id, {
+      const { data: deliveriesData, count } = await deliveryService.getPaginated(targetStationId, {
         page: currentPage,
         limit: ITEMS_PER_PAGE
       })
 
       // Load other resources (cached or full list for dropdowns)
-      // Note: Employee list is full for dropdowns, filtered by Active
       const [employeesData, itemsData, areasData] = await Promise.all([
-        employeeService.getAll(station.id, { activeOnly: true }, 1, 1000).then(res => res.data),
-        eppInventoryService.getAll(station.id),
-        areaService.getAll(station.id, true)
+        employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data),
+        eppInventoryService.getAll(targetStationId),
+        areaService.getAll(targetStationId, true)
       ])
 
       setDeliveries(deliveriesData || [])
@@ -274,6 +302,17 @@ const DeliveriesPage = () => {
     if (!item) {
       notify.error('Item no encontrado')
       return
+    }
+
+    // AREA RESTRICTION CHECK (Double Check)
+    if (item.area_id && formData.employee_id) {
+      const selectedEmp = employees.find(e => e.id === formData.employee_id)
+      if (selectedEmp && selectedEmp.area_id && item.area_id !== selectedEmp.area_id) {
+        const itemAreaName = areas.find(a => a.id === item.area_id)?.name || 'AREA ITEM'
+        const empAreaName = areas.find(a => a.id === selectedEmp.area_id)?.name || 'AREA EMPLEADO'
+        notify.error(`Restricción: Este ítem es exclusivo de "${itemAreaName}". El empleado pertenece al area de "${empAreaName}". considere elegir otro elemento que corresponde a su area`)
+        return
+      }
     }
 
     if (item.stock_current < currentItem.quantity) {
@@ -420,16 +459,78 @@ const DeliveriesPage = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('¿Está seguro de eliminar esta entrega?')) return
+  const handleViewDetails = (delivery) => {
+    setSelectedDeliveryDetails(delivery)
+    setShowDetailsModal(true)
+  }
 
+  const handleDeleteItem = (deliveryId, item, index) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Eliminar Item',
+      message: `¿Estás seguro de eliminar el item "${item.item_name}"? Esta acción revertirá el stock al inventario.`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deliveryService.removeItem(deliveryId, item, index)
+          notify.success('Item eliminado y stock restaurado correctamente')
+
+          // Refresh main list
+          await fetchData()
+
+          // Refetch details for the modal to keep it open and updated
+          try {
+            const updatedDelivery = await deliveryService.getById(deliveryId)
+            setSelectedDeliveryDetails(updatedDelivery)
+          } catch (innerError) {
+            console.warn('Could not refresh details, closing modal', innerError)
+            setShowDetailsModal(false)
+          }
+
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+        } catch (error) {
+          console.error('Error deleting item:', error)
+          notify.error('Error al eliminar el item')
+        }
+      }
+    })
+  }
+
+  // Handle Initial Click on Trash Icon
+  const handleDelete = (delivery) => {
+    if (delivery.status === 'PENDING') {
+      // Hard Delete for Pending
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Eliminar Entrega',
+        message: '¿Está seguro de eliminar esta entrega por completo? El stock de todos los items será restaurado.',
+        type: 'danger',
+        onConfirm: async () => {
+          try {
+            await deliveryService.delete(delivery.id)
+            notify.success('Entrega eliminada y stock restaurado')
+            await fetchData()
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+          } catch (error) {
+            console.error('Error deleting delivery:', error)
+            notify.error('Error al eliminar entrega: ' + error.message)
+          }
+        }
+      })
+    } else {
+      // Soft Cancel for Signed (requires reason)
+      setDeliveryToCancel(delivery.id)
+      setShowCancellationModal(true)
+    }
+  }
+
+  const handleConfirmCancel = async (reason) => {
     try {
-      const reason = prompt('Ingrese el motivo de la cancelación:')
-      if (!reason) return
-
-      await deliveryService.cancel(id, reason)
+      await deliveryService.cancel(deliveryToCancel, reason)
       await fetchData()
       notify.success('Entrega cancelada correctamente')
+      setShowCancellationModal(false)
+      setDeliveryToCancel(null)
     } catch (error) {
       console.error('Error canceling delivery:', error)
       notify.error(error.message || 'Error al cancelar la entrega')
@@ -508,6 +609,21 @@ const DeliveriesPage = () => {
   const isOutOfStock = selectedItemObj && selectedItemObj.stock_current <= 0
 
   const handleSelectItem = (item) => {
+    // AREA RESTRICTION LOGIC
+    if (item.area_id && formData.employee_id) {
+      const selectedEmp = employees.find(e => e.id === formData.employee_id)
+
+      // If employee exists and has an area, and item has an area, and they don't match
+      if (selectedEmp && selectedEmp.area_id && item.area_id !== selectedEmp.area_id) {
+        const itemAreaName = areas.find(a => a.id === item.area_id)?.name || 'AREA ITEM'
+        const empAreaName = areas.find(a => a.id === selectedEmp.area_id)?.name || 'AREA EMPLEADO'
+
+        // Notify and BLOCK selection with User's Specific Message
+        notify.error(`Restricción: Este ítem es exclusivo de "${itemAreaName}". El empleado pertenece al area de "${empAreaName}". considere elegir otro elemento que corresponde a su area`)
+        return
+      }
+    }
+
     setCurrentItem({
       ...currentItem,
       item_id: item.id,
@@ -660,9 +776,10 @@ const DeliveriesPage = () => {
                         {DELIVERY_REASON_LABELS[delivery.delivery_reason] || delivery.delivery_reason}
                       </div>
                     </td>
-                    <td className="gestor-td whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {delivery.items?.length || 0} items
+                    <td className="gestor-td">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-bold text-gray-900 dark:text-white text-sm">{delivery.items?.length || 0} items</span>
+                        <span className="text-[10px] text-gray-500 uppercase tracking-widest">Entregados</span>
                       </div>
                     </td>
                     <td className="gestor-td whitespace-nowrap">
@@ -680,23 +797,39 @@ const DeliveriesPage = () => {
                               <PenTool className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDelete(delivery.id)}
+                              onClick={() => handleDelete(delivery)}
                               className="text-red-600 hover:text-red-900"
-                              title="Cancelar"
+                              title="Eliminar"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </>
                         )}
                         {delivery.status === 'SIGNED' && (
-                          <button
-                            onClick={() => handleViewPDF(delivery)}
-                            className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300 transition-colors"
-                            title="Descargar PDF"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleViewPDF(delivery)}
+                              className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300 transition-colors"
+                              title="Descargar PDF"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(delivery)}
+                              className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                              title="Anular Entrega"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
+                        <button
+                          onClick={() => handleViewDetails(delivery)}
+                          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                          title="Ver Detalles"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -756,227 +889,295 @@ const DeliveriesPage = () => {
         </div>
       )}
 
-      {showModal && (
-        <div className="gestor-modal-backdrop">
-          <div className="gestor-modal-content max-w-4xl">
-            <div className="gestor-modal-header">
-              <h3 className="gestor-modal-title">Nueva Entrega</h3>
-              <button type="button" onClick={handleCloseModal} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="gestor-modal-body overflow-y-auto max-h-[calc(90vh-140px)]">
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <SearchableSelect
-                      label="Empleado"
-                      required
-                      options={employeeOptions}
-                      value={formData.employee_id}
-                      onChange={(val) => setFormData({ ...formData, employee_id: val })}
-                      placeholder="Buscar empleado por nombre o DNI..."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Fecha de Entrega *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.delivery_date}
-                      onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
-                      className="input w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Motivo de Entrega *
-                    </label>
-                    <select
-                      required
-                      value={formData.delivery_reason}
-                      onChange={(e) => setFormData({ ...formData, delivery_reason: e.target.value })}
-                      className="input w-full"
-                    >
-                      {Object.entries(DELIVERY_REASON_LABELS).map(([key, label]) => (
-                        <option key={key} value={key}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Observaciones
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="input w-full"
-                      placeholder="Observaciones generales..."
-                    />
-                  </div>
+      {/* Modal Edit/Create - REDESIGNED PREMIUM MODERN UX */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-gray-800 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Package className="w-6 h-6 text-primary-600" />
+                    Nueva Entrega
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Registre la salida de materiales y solicite firmas digitales.
+                  </p>
                 </div>
+                <button
+                  onClick={handleCloseModal}
+                  className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                <hr className="my-6" />
+              {/* Tabs */}
+              <div className="px-6 pt-4 flex gap-6 border-b border-gray-100 dark:border-gray-700">
+                <button
+                  onClick={() => setActiveTab('general')}
+                  className={`pb-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${activeTab === 'general' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <User size={16} />
+                  Información y Contexto
+                  {activeTab === 'general' && <motion.div layoutId="tab-underline-del" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />}
+                </button>
+                <button
+                  onClick={() => setActiveTab('items')}
+                  className={`pb-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${activeTab === 'items' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <ShoppingCart size={16} />
+                  Items y Carrito
+                  <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${formData.items.length > 0 ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {formData.items.length}
+                  </span>
+                  {activeTab === 'items' && <motion.div layoutId="tab-underline-del" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />}
+                </button>
+              </div>
 
-                <div className="flex justify-between items-center mb-4">
-                  <h4 className="text-md font-medium text-gray-900">Agregar Items</h4>
-                  {valuationEnabled && (
-                    <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 flex items-center shadow-sm">
-                      <span className="text-xs text-blue-600 font-medium mr-2 uppercase tracking-wide">Valor Total:</span>
-                      <span className="text-xl font-bold text-blue-800">
-                        {currencySymbol} {totalCost.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                </div>
+              <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-700">
 
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4 items-end">
+                  {/* TAB 1: GENERAL INFO */}
+                  {activeTab === 'general' && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
 
-                  {/* Item Picker Input (Trigger) */}
-                  <div className="md:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Item
-                    </label>
-                    <div
-                      className="input flex items-center justify-between cursor-pointer w-full bg-white hover:bg-gray-50 min-h-[42px]"
-                      onClick={() => setShowItemPicker(true)}
-                    >
-                      <span className={`truncate ${currentItem.item_id ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
-                        {currentItem.item_id
-                          ? `${currentItem.item_name} ${currentItem.size ? `(${currentItem.size})` : ''}`
-                          : 'Seleccionar producto del inventario...'}
-                      </span>
-                      <Search className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" />
-                    </div>
-
-                    {/* Visual Alert for Out of Stock */}
-                    {isOutOfStock && (
-                      <div className="mt-1 text-xs text-red-600 flex items-center">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        Sin stock disponible
+                      <div className="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+                        <h4 className="flex items-center gap-2 text-blue-800 dark:text-blue-300 font-bold mb-4">
+                          <User className="w-5 h-5" /> Datos del Receptor
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="md:col-span-2">
+                            <SearchableSelect
+                              label="Seleccionar Empleado *"
+                              required
+                              options={employeeOptions}
+                              value={formData.employee_id}
+                              onChange={(val) => setFormData({ ...formData, employee_id: val })}
+                              placeholder="Escribe para buscar por nombre o DNI..."
+                            />
+                            <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">El empleado recibirá una notificación para firmar.</p>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Cantidad
-                      </label>
-                      {/* Quick Add Stock Button */}
-                      {currentItem.item_id && (
+                      <div className="bg-gray-50 dark:bg-gray-700/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-700">
+                        <h4 className="flex items-center gap-2 text-gray-800 dark:text-gray-200 font-bold mb-4">
+                          <ClipboardList className="w-5 h-5" /> Contexto de la Entrega
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center gap-1">
+                              <Calendar size={14} className="text-gray-400" /> Fecha
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={formData.delivery_date}
+                              onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
+                              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Motivo</label>
+                            <div className="relative">
+                              <select
+                                required
+                                value={formData.delivery_reason}
+                                onChange={(e) => setFormData({ ...formData, delivery_reason: e.target.value })}
+                                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all appearance-none dark:text-white"
+                              >
+                                {Object.entries(DELIVERY_REASON_LABELS).map(([key, label]) => (
+                                  <option key={key} value={key}>{label}</option>
+                                ))}
+                              </select>
+                              <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Notas / Observaciones</label>
+                            <textarea
+                              rows={2}
+                              value={formData.notes}
+                              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all resize-none dark:text-white"
+                              placeholder="Detalles opcionales sobre esta entrega..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-4">
                         <button
                           type="button"
-                          onClick={handleOpenStockModal}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium inline-flex items-center"
-                          title="Ingresar stock para este item"
+                          onClick={() => setActiveTab('items')}
+                          className="btn btn-primary btn-md px-6 flex items-center gap-2"
                         >
-                          <Plus className="w-3 h-3 mr-0.5" />
-                          Stock
+                          Siguiente: Agregar Items <ChevronRight size={16} />
                         </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* TAB 2: ITEMS & CART */}
+                  {activeTab === 'items' && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
+
+                      {/* Summary Card */}
+                      {valuationEnabled && (
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 flex justify-between items-center shadow-sm">
+                          <div>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">Costo Total Estimado</p>
+                            <p className="text-sm text-blue-600/70 dark:text-blue-400/70">Calculado en base a precios unitarios</p>
+                          </div>
+                          <div className="text-3xl font-black text-blue-700 dark:text-blue-300 tracking-tight">
+                            {currencySymbol} {totalCost.toFixed(2)}
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      value={currentItem.quantity}
-                      onChange={(e) => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) })}
-                      className="input w-full"
-                    />
-                  </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Talla
-                    </label>
-                    <input
-                      type="text"
-                      value={currentItem.size}
-                      readOnly
-                      className="input w-full bg-gray-50 cursor-not-allowed"
-                      placeholder={currentItem.item_id ? 'Sin talla' : '-'}
-                    />
-                  </div>
+                      {/* Add Item Form */}
+                      <div className="bg-gray-50 dark:bg-gray-700/30 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
+                        <h5 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                          <Plus className="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded-full p-0.5" /> Agregar Producto
+                        </h5>
 
-                  <div>
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                          <div className="md:col-span-6 relative">
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase">Buscar Item</label>
+                            <button
+                              type="button"
+                              onClick={() => setShowItemPicker(true)}
+                              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-primary-400 transition-colors group text-left"
+                            >
+                              {currentItem.item_id ? (
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-gray-900 dark:text-white text-sm">{currentItem.item_name}</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">{currentItem.size ? `Talla: ${currentItem.size}` : 'Sin talla'}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-500 text-sm italic">Seleccione un item del stock...</span>
+                              )}
+                              <Search size={18} className="text-gray-400 group-hover:text-primary-500 transition-colors" />
+                            </button>
+                            {isOutOfStock && <span className="text-xs text-red-500 font-bold absolute -bottom-5 left-0 flex items-center gap-1"><AlertCircle size={10} /> Sin Stock</span>}
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase">Cant.</label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="1"
+                                value={currentItem.quantity}
+                                onChange={e => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-center font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500/20"
+                              />
+                              {currentItem.item_id && (
+                                <button type="button" onClick={handleOpenStockModal} className="absolute -right-1 -top-6 text-[10px] text-blue-500 hover:underline flex items-center">
+                                  + Stock
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-4">
+                            <button
+                              type="button"
+                              onClick={handleAddItem}
+                              disabled={!currentItem.item_id}
+                              className="w-full py-2.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                            >
+                              <Plus size={18} /> Agregar a Lista
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Items List */}
+                      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                        {formData.items.length === 0 ? (
+                          <div className="p-8 text-center flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 dark:border-gray-700 m-4 rounded-xl">
+                            <ShoppingCart size={40} className="mb-2 text-gray-200 dark:text-gray-700" />
+                            <p className="text-sm">La lista de entregas está vacía.</p>
+                            <p className="text-xs mt-1">Busca items arriba para comenzar.</p>
+                          </div>
+                        ) : (
+                          <table className="w-full">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
+                              <tr>
+                                <th className="px-5 py-3 text-left">Item</th>
+                                <th className="px-5 py-3 text-center">Tipo</th>
+                                <th className="px-5 py-3 text-center">Cant.</th>
+                                <th className="px-5 py-3 text-center">Talla</th>
+                                <th className="px-5 py-3 text-right">Acción</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                              {formData.items.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                  <td className="px-5 py-3">
+                                    <p className="font-bold text-gray-900 dark:text-white text-sm">{item.item_name}</p>
+                                    <p className="text-xs text-gray-400">Renov: {new Date(item.fecha_renovacion).toLocaleDateString()}</p>
+                                  </td>
+                                  <td className="px-5 py-3 text-center text-xs text-gray-500 dark:text-gray-400">{item.item_type}</td>
+                                  <td className="px-5 py-3 text-center font-mono font-bold text-gray-900 dark:text-white">{item.quantity}</td>
+                                  <td className="px-5 py-3 text-center text-xs text-gray-500">{item.size || '-'}</td>
+                                  <td className="px-5 py-3 text-right">
+                                    <button
+                                      onClick={() => handleRemoveItem(idx)}
+                                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                    </motion.div>
+                  )}
+
+                </div>
+
+                {/* Footer Fixed */}
+                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center z-10">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Listo para procesar</span>
+                  </div>
+                  <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={handleAddItem}
-                      className="btn btn-secondary btn-md w-full mb-0.5"
+                      onClick={handleCloseModal}
+                      className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={formData.items.length === 0 || !formData.employee_id}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    >
+                      <Sparkles size={18} className="animate-pulse" />
+                      Crear Entrega
                     </button>
                   </div>
                 </div>
-
-                {formData.items.length > 0 && (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Item</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Tipo</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cantidad</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Talla</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Renovación</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {formData.items.map((item, index) => (
-                          <tr key={index}>
-                            <td className="px-4 py-2 text-sm">{item.item_name}</td>
-                            <td className="px-4 py-2 text-sm">{item.item_type}</td>
-                            <td className="px-4 py-2 text-sm">{item.quantity}</td>
-                            <td className="px-4 py-2 text-sm">{item.size || '-'}</td>
-                            <td className="px-4 py-2 text-sm">
-                              {new Date(item.fecha_renovacion).toLocaleDateString('es-PE')}
-                            </td>
-                            <td className="px-4 py-2 text-sm">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(index)}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div className="gestor-modal-footer">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="btn btn-secondary btn-md w-full sm:w-auto mt-3 sm:mt-0"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-md w-full sm:w-auto sm:mr-3 inline-flex items-center justify-center shadow-lg transform active:scale-95 transition-all"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  Crear Entrega
-                </button>
-              </div>
-            </form>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Unified Signing Wizard Modal */}
       {showSignatureModal && selectedDelivery && (
@@ -1084,6 +1285,95 @@ const DeliveriesPage = () => {
         onSelect={handleSelectItem}
       />
 
+      {/* Delivery Details Modal */}
+      <AnimatePresence>
+        {showDetailsModal && selectedDeliveryDetails && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-gray-800 w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <ClipboardList className="w-5 h-5 text-primary-600" />
+                    Detalle de Entrega: <span className="font-mono text-gray-600 dark:text-gray-400">{selectedDeliveryDetails.document_code}</span>
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Empleado: <span className="font-semibold text-gray-900 dark:text-gray-200">{selectedDeliveryDetails.employee?.full_name}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDetailsModal(false)}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 overflow-y-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-sm text-gray-500">
+                    Fecha: <span className="font-medium text-gray-900 dark:text-white">{new Date(selectedDeliveryDetails.delivery_date).toLocaleDateString()}</span>
+                  </div>
+                  {getStatusBadge(selectedDeliveryDetails.status)}
+                </div>
+
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-3">Items Entregados</h4>
+                <div className="space-y-3">
+                  {selectedDeliveryDetails.items?.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3 rounded-xl bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm text-gray-600 dark:text-gray-300">
+                          <Package size={20} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 dark:text-white text-sm">{item.item_name}</p>
+                          <p className="text-xs text-gray-500">
+                            {item.item_type} • Talla: {item.size || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="bg-white dark:bg-gray-800 px-2 py-1 rounded-md text-sm font-bold shadow-sm border border-gray-100 dark:border-gray-700">
+                          Qty: {item.quantity}
+                        </span>
+
+                        {/* Allow deletion only if PENDING */}
+                        {selectedDeliveryDetails.status === 'PENDING' && (
+                          <button
+                            onClick={() => handleDeleteItem(selectedDeliveryDetails.id, item, idx)}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors group"
+                            title="Eliminar item y restaurar stock"
+                          >
+                            <Trash2 size={16} className="group-hover:scale-110 transition-transform" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 md:flex justify-end border-t border-gray-100 dark:border-gray-700">
+                <button
+                  onClick={() => setShowDetailsModal(false)}
+                  className="btn btn-secondary w-full md:w-auto"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+
       {/* Stock Modal */}
       <AddStockModal
         show={showStockModal}
@@ -1091,6 +1381,26 @@ const DeliveriesPage = () => {
         item={stockItem}
         onSuccess={handleStockSuccess}
         userId={user?.id}
+      />
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        type={confirmDialog.type}
+        confirmText="Sí, eliminar"
+        cancelText="Cancelar"
+      />
+
+
+      <CancellationModal
+        isOpen={showCancellationModal}
+        onClose={() => {
+          setShowCancellationModal(false)
+          setDeliveryToCancel(null)
+        }}
+        onConfirm={handleConfirmCancel}
       />
     </div >
   )
