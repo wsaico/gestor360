@@ -144,6 +144,20 @@ export const AuthProvider = ({ children }) => {
   }
 
   /**
+   * Verifica si el usuario tiene un permiso específico (Capability)
+   * @param {string} permission - ID del permiso (ej. 'EMPLOYEES_MANAGE')
+   * @returns {boolean}
+   */
+  const hasPermission = (permission) => {
+    // Super Admin (Global ADMIN) has implicit ALL access
+    if (isGlobalAdmin()) return true
+
+    // Check if user has explicit permission
+    if (user?.permissions?.includes('ALL_ACCESS')) return true
+    return user?.permissions?.includes(permission) || false
+  }
+
+  /**
    * Verifica si el usuario es administrador global
    * @returns {boolean}
    */
@@ -197,6 +211,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     hasRole,
+    hasPermission,
     isGlobalAdmin,
     updateUser,
     updateStation,

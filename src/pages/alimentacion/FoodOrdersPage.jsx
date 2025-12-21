@@ -660,7 +660,8 @@ const FoodOrdersPage = () => {
                                                     </button>
                                                 )}
 
-                                                {order.status === 'PENDING' && !hasRole(ROLES.PROVIDER) && (
+                                                {/* Allow Delete if PENDING (for everyone) OR if ADMIN (any status) */}
+                                                {(order.status === 'PENDING' || hasRole(ROLES.ADMIN)) && !hasRole(ROLES.PROVIDER) && (
                                                     <button
                                                         onClick={() => handleDelete(order.id)}
                                                         className="text-gray-400 hover:text-red-600"

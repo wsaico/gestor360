@@ -582,7 +582,7 @@ const PublicMenuPage = () => {
                             <h2 className="text-xl font-bold text-gray-900 leading-tight">
                                 Hola, <span className="text-primary-600">{displayName}</span>
                             </h2>
-                            <p className="text-xs text-gray-500">¿Qué te gustaría comer hoy?</p>
+                            <p className="text-xs text-gray-500">¿Qué te gustaría comer {filterDate === new Date().toISOString().split('T')[0] ? 'hoy' : 'mañana'}?</p>
                         </div>
 
                         {/* Date Tabs */}
@@ -933,9 +933,43 @@ const PublicMenuPage = () => {
                                 </button>
                             </div>
 
-                            <div className="bg-gray-50 border-b border-gray-100 p-4 flex justify-between text-xs text-gray-500">
-                                <span>Gastado: <b className="text-gray-800">S/ {historyOrders.reduce((sum, o) => sum + Number(o.cost_applied), 0).toFixed(2)}</b></span>
-                                <span>Ahorrado: <b className="text-green-600">S/ {historyOrders.reduce((sum, o) => sum + Number(o.company_subsidy_snapshot || 0), 0).toFixed(2)}</b></span>
+                            {/* Resumen Mensual con Diseño Mejorado */}
+                            <div className="bg-gradient-to-br from-primary-600 to-primary-800 p-6 text-white text-center rounded-none sm:rounded-none relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+                                    <div className="absolute top-10 right-10 w-32 h-32 bg-white rounded-full blur-3xl"></div>
+                                    <div className="absolute bottom-10 left-10 w-24 h-24 bg-white rounded-full blur-2xl"></div>
+                                </div>
+
+                                <p className="text-primary-100 text-xs font-medium uppercase tracking-wider mb-1">
+                                    En lo que va de {new Date().toLocaleString('es-ES', { month: 'long' })}
+                                </p>
+                                <h3 className="text-3xl font-black mb-1">
+                                    S/ {historyOrders
+                                        .filter(o => new Date(o.menu_date).getMonth() === new Date().getMonth())
+                                        .reduce((sum, o) => sum + Number(o.company_subsidy_snapshot || 0), 0)
+                                        .toFixed(2)}
+                                </h3>
+                                <p className="text-white/80 text-sm font-medium mb-4 flex items-center justify-center gap-1">
+                                    <span className="bg-white/20 p-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" /></span>
+                                    <span>Asumido por la empresa</span>
+                                </p>
+
+                                <div className="flex justify-center gap-4 text-xs border-t border-white/10 pt-4">
+                                    <div className="text-right pr-4 border-r border-white/20">
+                                        <p className="text-primary-200">Tu Aporte</p>
+                                        <p className="font-bold text-lg">S/ {historyOrders
+                                            .filter(o => new Date(o.menu_date).getMonth() === new Date().getMonth())
+                                            .reduce((sum, o) => sum + Number(o.cost_applied), 0)
+                                            .toFixed(2)}
+                                        </p>
+                                    </div>
+                                    <div className="text-left pl-2">
+                                        <p className="text-primary-200">Pedidos del Mes</p>
+                                        <p className="font-bold text-lg">
+                                            {historyOrders.filter(o => new Date(o.menu_date).getMonth() === new Date().getMonth()).length}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">

@@ -50,6 +50,7 @@ import AppearanceSettings from '@components/settings/AppearanceSettings'
 import ProfileSettings from '@components/settings/ProfileSettings'
 import NotificationSettings from '@components/settings/NotificationSettings'
 import AreaSettings from '@components/settings/AreaSettings'
+import RoleSettings from '@components/settings/RoleSettings'
 import SecuritySettings from '@components/settings/SecuritySettings'
 import MasterCatalogPage from '@pages/admin/MasterCatalogPage'
 
@@ -289,6 +290,7 @@ const AppRoutes = () => {
           <Route path="perfil" element={<ProfileSettings />} />
           <Route path="notificaciones" element={<NotificationSettings />} />
           <Route path="areas" element={<AreaSettings />} />
+          <Route path="roles" element={<RoleSettings />} />
           <Route path="seguridad" element={<SecuritySettings />} />
 
         </Route>

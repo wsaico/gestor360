@@ -143,6 +143,112 @@ class DashboardService {
       return { todayOrders: 0, pendingOrders: 0, monthlyOrders: 0, avgCost: 0 }
     }
   }
+
+
+  /**
+   * Obtiene actividad reciente del sistema (Feed Unificado)
+   */
+  async getRecentActivity(stationId = null) {
+    try {
+      const limit = 5
+      const activities = []
+
+      // 1. Últimos pedidos de alimentación
+      let ordersQuery = supabase
+        .from('food_orders')
+        .select(`
+          id, 
+          menu_date, 
+          created_at, 
+          employee:employees(full_name),
+          status
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (stationId) ordersQuery = ordersQuery.eq('station_id', stationId)
+      const { data: orders } = await ordersQuery
+
+      if (orders) {
+        orders.forEach(o => {
+          activities.push({
+            id: `order-${o.id}`,
+            type: 'ORDER',
+            title: 'Nuevo pedido de alimentación',
+            description: `${o.employee?.full_name || 'Empleado'} para el ${o.menu_date}`,
+            time: o.created_at,
+            icon: 'UtensilsCrossed',
+            color: 'green'
+          })
+        })
+      }
+
+      // 2. Últimas entregas SST (Simulado si no hay tabla poblada, pero usaremos la real)
+      let deliveriesQuery = supabase
+        .from('deliveries')
+        .select(`
+          id, 
+          delivery_date, 
+          created_at,
+          employee:employees(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (stationId) {
+        // Assuming deliveries has station_id inferred or we skip filter for now if not present
+        // deliveriesQuery = deliveriesQuery.eq('station_id', stationId) 
+      }
+      const { data: deliveries } = await deliveriesQuery
+
+      if (deliveries) {
+        deliveries.forEach(d => {
+          activities.push({
+            id: `del-${d.id}`,
+            type: 'DELIVERY',
+            title: 'Entrega de EPP realizada',
+            description: `A cargo de ${d.employee?.full_name}`,
+            time: d.created_at || d.delivery_date,
+            icon: 'ClipboardList',
+            color: 'blue'
+          })
+        })
+      }
+
+      // 3. Nuevos empleados
+      let empQuery = supabase
+        .from('employees')
+        .select('id, full_name, created_at, role_name')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (stationId) empQuery = empQuery.eq('station_id', stationId)
+      const { data: newEmployees } = await empQuery
+
+      if (newEmployees) {
+        newEmployees.forEach(e => {
+          activities.push({
+            id: `emp-${e.id}`,
+            type: 'EMPLOYEE',
+            title: 'Nuevo empleado registrado',
+            description: `${e.full_name} (${e.role_name})`,
+            time: e.created_at,
+            icon: 'Users',
+            color: 'purple'
+          })
+        })
+      }
+
+      // Ordenar todo por fecha y devolver los top 10
+      return activities
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 10)
+
+    } catch (error) {
+      console.error('Error fetching recent activity:', error)
+      return []
+    }
+  }
 }
 
 export default new DashboardService()

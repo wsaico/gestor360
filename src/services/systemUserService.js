@@ -111,9 +111,26 @@ class SystemUserService {
      */
     async update(id, userData) {
         try {
+            // Separa la contraseña del resto de datos
+            const { password, ...profileData } = userData
+
+            // 1. Si hay nueva contraseña, actualizarla vía RPC seguro
+            if (password && password.trim() !== '') {
+                const { error: rpcError } = await supabase.rpc('admin_update_user_password', {
+                    target_user_id: id,
+                    new_password: password
+                })
+
+                if (rpcError) {
+                    console.error('Error updating password via RPC:', rpcError)
+                    throw new Error('Error al actualizar la contraseña: ' + rpcError.message)
+                }
+            }
+
+            // 2. Actualizar datos del perfil en system_users (sin el campo password)
             const { data, error } = await supabase
                 .from('system_users')
-                .update(userData)
+                .update(profileData)
                 .eq('id', id)
                 .select()
                 .single()

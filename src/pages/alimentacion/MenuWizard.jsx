@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import menuService from '@services/menuService'
 import { MEAL_TYPES, MEAL_TYPE_LABELS } from '@utils/constants'
+import { useAuth } from '@contexts/AuthContext'
 
 /**
  * Modes of creation
@@ -28,9 +29,10 @@ const MODES = {
 /**
  * Menu Creation Wizard
  */
-const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
-    const [step, setStep] = useState(1)
-    const [mode, setMode] = useState(MODES.SELECT)
+const MenuWizard = ({ stationId, providerId, menuToEdit, onClose, onSuccess }) => {
+    const { user, stations } = useAuth()
+    const [step, setStep] = useState(menuToEdit ? 2 : 1)
+    const [mode, setMode] = useState(menuToEdit ? MODES.SELECT : MODES.SELECT) // Will be set in useEffect for edit
     const [loading, setLoading] = useState(false)
     const [availableMenus, setAvailableMenus] = useState([])
 
@@ -45,12 +47,53 @@ const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
         sections: [] // For granular mode [{ title: 'Entrada', items: [] }]
     })
 
-    // Initialize date
+    // Initialize date or load editing data
     useEffect(() => {
-        const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        setFormData(prev => ({ ...prev, serve_date: tomorrow.toISOString().split('T')[0] }))
-    }, [])
+        if (menuToEdit) {
+            // Detect mode
+            const isGranular = menuToEdit.options.some(opt => typeof opt === 'string' && opt.startsWith('SECTION:'))
+
+            if (isGranular) {
+                const sections = []
+                let currentSection = null
+                menuToEdit.options.forEach(opt => {
+                    if (typeof opt === 'string' && opt.startsWith('SECTION:')) {
+                        if (currentSection) sections.push(currentSection)
+                        currentSection = { title: opt.replace('SECTION:', ''), items: [] }
+                    } else if (currentSection) {
+                        currentSection.items.push(opt)
+                    }
+                })
+                if (currentSection) sections.push(currentSection)
+
+                setFormData({
+                    station_id: menuToEdit.station_id,
+                    provider_id: menuToEdit.provider_id,
+                    serve_date: menuToEdit.serve_date,
+                    meal_type: menuToEdit.meal_type || MEAL_TYPES.LUNCH,
+                    description: menuToEdit.description || '',
+                    options: [],
+                    sections
+                })
+                setMode(MODES.GRANULAR)
+            } else {
+                setFormData({
+                    station_id: menuToEdit.station_id,
+                    provider_id: menuToEdit.provider_id,
+                    serve_date: menuToEdit.serve_date,
+                    meal_type: menuToEdit.meal_type || MEAL_TYPES.LUNCH,
+                    description: menuToEdit.description || '',
+                    options: menuToEdit.options,
+                    sections: []
+                })
+                setMode(MODES.SIMPLE)
+            }
+        } else {
+            const tomorrow = new Date()
+            tomorrow.setDate(tomorrow.getDate() + 1)
+            setFormData(prev => ({ ...prev, serve_date: tomorrow.toISOString().split('T')[0] }))
+        }
+    }, [menuToEdit])
 
     // Navigation handlers
     const handleNext = () => {
@@ -171,20 +214,24 @@ const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
             }
 
             const payload = {
-                station_id: stationId,
-                provider_id: providerId,
+                station_id: formData.station_id || stationId,
+                provider_id: formData.provider_id || providerId,
                 serve_date: formData.serve_date,
                 meal_type: formData.meal_type,
                 options: finalOptions,
                 description: formData.description
             }
 
-            await menuService.create(payload)
+            if (menuToEdit) {
+                await menuService.update(menuToEdit.id, payload)
+            } else {
+                await menuService.create(payload)
+            }
             onSuccess()
 
         } catch (error) {
             console.error(error)
-            alert(error.message || 'Error al crear menú')
+            alert(error.message || `Error al ${menuToEdit ? 'actualizar' : 'crear'} menú`)
         } finally {
             setLoading(false)
         }
@@ -203,9 +250,9 @@ const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
                         <div className="flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 {step === 1 && <span className="text-primary-600">Paso 1:</span>}
-                                {step === 2 && <span className="text-primary-600">Paso 2:</span>}
+                                {step === 2 && <span className="text-primary-600">{menuToEdit ? 'Editando:' : 'Paso 2:'}</span>}
 
-                                {step === 1 ? 'Seleccionar Tipo de Menú' : 'Configurar Detalles'}
+                                {step === 1 ? 'Seleccionar Tipo de Menú' : (menuToEdit ? 'Actualizar Menú' : 'Configurar Detalles')}
                             </h3>
                             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
                                 <X className="w-5 h-5" />
@@ -321,7 +368,22 @@ const MenuWizard = ({ stationId, providerId, onClose, onSuccess }) => {
                             <div className="animate-fade-in space-y-6">
 
                                 {/* Common Fields */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    {user?.role === 'ADMIN' && (
+                                        <div>
+                                            <label className="label">Estación / Sede</label>
+                                            <select
+                                                className="input"
+                                                value={formData.station_id}
+                                                onChange={e => setFormData(prev => ({ ...prev, station_id: e.target.value }))}
+                                            >
+                                                <option value="">Seleccione...</option>
+                                                {stations.map(st => (
+                                                    <option key={st.id} value={st.id}>{st.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                     <div>
                                         <label className="label">Fecha de Servicio</label>
                                         <input

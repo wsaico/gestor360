@@ -1,9 +1,85 @@
-// Roles del sistema (RBAC)
+// Roles del sistema (RBAC) LEGACY (Mantener para compatibilidad)
 export const ROLES = {
   ADMIN: 'ADMIN',
   SUPERVISOR: 'SUPERVISOR',
   MONITOR: 'MONITOR',
   PROVIDER: 'PROVIDER'
+}
+
+// ===================================
+// PERMISOS Y ROLES DEL SISTEMA (RBAC DINÁMICO)
+// ===================================
+
+export const PERMISSIONS = {
+  // CONFIGURACIÓN Y SISTEMA
+  CONFIG_MANAGE: 'CONFIG_MANAGE',     // Acceso total a configuración
+  ROLES_MANAGE: 'ROLES_MANAGE',       // Gestionar roles y permisos
+
+  // USUARIOS
+  USERS_VIEW: 'USERS_VIEW',
+  USERS_MANAGE: 'USERS_MANAGE',
+
+  // EMPLEADOS (RRHH)
+  EMPLOYEES_VIEW: 'EMPLOYEES_VIEW',
+  EMPLOYEES_MANAGE: 'EMPLOYEES_MANAGE',
+
+  // ESTACIONES
+  STATIONS_VIEW: 'STATIONS_VIEW',
+  STATIONS_MANAGE: 'STATIONS_MANAGE',
+
+  // SST
+  SST_VIEW: 'SST_VIEW',
+  SST_MANAGE: 'SST_MANAGE',
+
+  // ALIMENTACIÓN
+  FOOD_VIEW: 'FOOD_VIEW',
+  FOOD_MANAGE: 'FOOD_MANAGE',
+  FOOD_REPORTS: 'FOOD_REPORTS',
+
+  // ACTIVOS
+  ASSETS_VIEW: 'ASSETS_VIEW',
+  ASSETS_MANAGE: 'ASSETS_MANAGE'
+}
+
+export const PERMISSION_LABELS = {
+  CONFIG_MANAGE: 'Gestión de Configuración',
+  ROLES_MANAGE: 'Gestión de Roles y Permisos',
+  USERS_VIEW: 'Ver Usuarios del Sistema',
+  USERS_MANAGE: 'Crear/Editar Usuarios',
+  EMPLOYEES_VIEW: 'Ver Lista de Empleados',
+  EMPLOYEES_MANAGE: 'Crear/Editar Empleados',
+  STATIONS_VIEW: 'Ver Estaciones',
+  STATIONS_MANAGE: 'Gestionar Estaciones',
+  SST_VIEW: 'Ver Módulo SST',
+  SST_MANAGE: 'Gestionar Registros SST',
+  FOOD_VIEW: 'Ver Módulo Alimentación',
+  FOOD_MANAGE: 'Gestionar Menús y Pedidos',
+  FOOD_REPORTS: 'Ver Reportes de Consumo',
+  ASSETS_VIEW: 'Ver Inventario de Activos',
+  ASSETS_MANAGE: 'Gestionar Activos'
+}
+
+export const MODULE_GROUPS = {
+  SYSTEM: {
+    label: 'Sistema',
+    permissions: ['CONFIG_MANAGE', 'ROLES_MANAGE', 'USERS_VIEW', 'USERS_MANAGE', 'STATIONS_VIEW', 'STATIONS_MANAGE']
+  },
+  RRHH: {
+    label: 'Recursos Humanos',
+    permissions: ['EMPLOYEES_VIEW', 'EMPLOYEES_MANAGE']
+  },
+  SST: {
+    label: 'Seguridad y Salud (SST)',
+    permissions: ['SST_VIEW', 'SST_MANAGE']
+  },
+  FOOD: {
+    label: 'Alimentación',
+    permissions: ['FOOD_VIEW', 'FOOD_MANAGE', 'FOOD_REPORTS']
+  },
+  ASSETS: {
+    label: 'Activos',
+    permissions: ['ASSETS_VIEW', 'ASSETS_MANAGE']
+  }
 }
 
 // Estados de empleados

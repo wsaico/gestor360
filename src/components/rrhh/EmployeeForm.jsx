@@ -62,16 +62,26 @@ const EmployeeForm = ({ employee, onSuccess, onCancel }) => {
     })
 
     useEffect(() => {
-        loadDependencies()
-        if (isEdit && employee) {
-            setFormData({
-                ...employee,
-                station_id: employee.station_id || contextStation?.id || '',
-                area_id: employee.area_id || '',
-                birth_date: employee.birth_date || '',
-            })
+        const initialize = async () => {
+            await loadDependencies()
+
+            if (isEdit && employee) {
+                setFormData({
+                    ...employee,
+                    station_id: employee.station_id || contextStation?.id || '',
+                    area_id: employee.area_id || '',
+                    birth_date: employee.birth_date || '',
+                })
+            } else if (contextStation?.id && !formData.station_id) {
+                setFormData(prev => ({
+                    ...prev,
+                    station_id: contextStation.id
+                }))
+            }
         }
-    }, [employee, contextStation])
+
+        initialize()
+    }, [employee, contextStation?.id])
 
     // Reload areas when station changes
     useEffect(() => {
@@ -88,10 +98,13 @@ const EmployeeForm = ({ employee, onSuccess, onCancel }) => {
                 jobRoleService.getAll(),
                 stationService.getAll()
             ])
-            setRoles(rolesData)
-            setStations(stationsData)
+            setRoles(rolesData || [])
+            setStations(stationsData || [])
+            if (!rolesData?.length) console.warn('No se cargaron roles de la base de datos')
+            if (!stationsData?.length) console.warn('No se cargaron estaciones de la base de datos')
         } catch (error) {
             console.error('Error loading dependencies:', error)
+            alert('Error al cargar cargos/estaciones. Verifique su conexión y permisos.')
         }
     }
 

@@ -31,12 +31,30 @@ class AuthService {
 
       if (userError) throw userError
 
+      // Fetch dynamic permissions if available
+      let permissions = []
+      try {
+        const { data: roleData } = await supabase
+          .from('app_roles')
+          .select('permissions')
+          .eq('name', userData.role)
+          .single()
+
+        if (roleData?.permissions) {
+          permissions = roleData.permissions
+        }
+      } catch (e) {
+        console.warn('Could not fetch permissions for role:', userData.role)
+      }
+
       // Formatear datos del usuario
       const user = {
         id: userData.id,
         email: userData.email,
         username: userData.username,
         role: userData.role,
+        role_label: userData.role, // Default to code, update if fetched
+        permissions: permissions,
         station_id: userData.station_id,
         avatar_url: userData.avatar_url,
         is_active: userData.is_active

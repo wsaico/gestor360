@@ -106,28 +106,52 @@ const EmployeesPage = () => {
 
         for (const row of data) {
           try {
+            // Helper to get value from row case-insensitively
+            const getRowVal = (key) => {
+              const k = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase())
+              return k ? row[k] : null
+            }
+
+            const dni = String(getRowVal('DNI') || '')
+            const names = getRowVal('NOMBRES')
+            const email = getRowVal('EMAIL')
+
             // Basic Validation
-            if (!row['DNI'] || !row['NOMBRES'] || !row['EMAIL']) {
-              if (row['DNI']) errors.push(`DNI ${row['DNI']}: Faltan datos obligatorios`)
+            if (!dni || !names || !email) {
+              if (dni) errors.push(`DNI ${dni}: Faltan datos obligatorios (DNI, NOMBRES o EMAIL)`)
               continue
             }
 
-            const fullName = `${row['NOMBRES']} ${row['APELLIDOS'] || ''}`.trim()
+            const fullName = `${names} ${getRowVal('APELLIDOS') || ''}`.trim()
+
+            // Resolve Area ID if possible
+            let areaId = null
+            const areaName = getRowVal('AREA') || getRowVal('ÁREA')
+            if (areaName && station?.id) {
+              try {
+                const stationAreas = await areaService.getAll(station.id, true)
+                const foundArea = stationAreas.find(a => a.name.toUpperCase() === areaName.toUpperCase())
+                if (foundArea) areaId = foundArea.id
+              } catch (areaErr) {
+                console.warn('Error resolving area:', areaErr)
+              }
+            }
 
             const employeeData = {
               station_id: station?.id,
-              dni: String(row['DNI']),
+              dni: dni,
               full_name: fullName,
-              email: row['EMAIL'],
-              phone: row['TELEFONO'] || '',
-              role_name: row['CARGO'] || 'Empleado',
-              contract_type: row['TIPO CONTRATO'] || 'INDETERMINADO',
-              work_schedule: row['HORARIO'] || 'L-V 8AM-5PM',
+              email: email,
+              phone: getRowVal('TELEFONO') || '',
+              role_name: getRowVal('CARGO') || 'Empleado',
+              area_id: areaId,
+              contract_type: getRowVal('TIPO CONTRATO') || 'INDETERMINADO',
+              work_schedule: getRowVal('HORARIO') || 'FULL_8HRS',
               status: 'ACTIVO',
-              hire_date: row['FECHA INGRESO'] ? new Date(row['FECHA INGRESO']).toISOString() : new Date().toISOString(),
-              salary: Number(row['SALARIO'] || 0),
-              birth_date: row['FECHA NACIMIENTO'] ? new Date(row['FECHA NACIMIENTO']).toISOString() : null,
-              uniform_size: row['TALLA UNIFORME'] || 'M'
+              hire_date: getRowVal('FECHA INGRESO') ? new Date(getRowVal('FECHA INGRESO')).toISOString() : new Date().toISOString(),
+              salary: Number(getRowVal('SALARIO') || 0),
+              birth_date: getRowVal('FECHA NACIMIENTO') ? new Date(getRowVal('FECHA NACIMIENTO')).toISOString() : null,
+              uniform_size: getRowVal('TALLA UNIFORME') || 'M'
             }
 
             // Verificar si ya existe por DNI
@@ -184,13 +208,14 @@ const EmployeesPage = () => {
           'APELLIDOS': 'PEREZ',
           'EMAIL': 'juan.perez@empresa.com',
           'TELEFONO': '999999999',
-          'CARGO': 'OPERARIO',
+          'CARGO': 'Supervisor de Estación',
+          'ÁREA': 'RAMPA',
           'FECHA INGRESO': '2024-01-01',
           'SALARIO': 1500,
           'FECHA NACIMIENTO': '1990-01-01',
           'TALLA UNIFORME': 'M',
           'TIPO CONTRATO': 'INDETERMINADO',
-          'HORARIO': 'L-V 8AM-5PM'
+          'HORARIO': 'FULL_8HRS'
         }
       ]
 
@@ -214,19 +239,24 @@ const EmployeesPage = () => {
   const fetchEmployees = async () => {
     try {
       setLoading(true)
-      const stationId = station?.id || null
-      // Server-side filtering & pagination
+
+      // FIX: Use selectedStationId for Admins, context station for others
+      const targetStationId = isAdmin
+        ? (selectedStationId || null)
+        : (station?.id || null)
+
       const filters = {
         status: statusFilter,
         search: searchTerm
       }
-      const { data, count } = await employeeService.getAll(stationId, filters, currentPage, itemsPerPage)
 
-      setEmployees(data)
+      const { data, count } = await employeeService.getAll(targetStationId, filters, currentPage, itemsPerPage)
+
+      setEmployees(data || [])
       setTotalPages(Math.ceil((count || 0) / itemsPerPage))
     } catch (error) {
       console.error('Error fetching employees:', error)
-      alert('Error al cargar los empleados. Por favor, intente nuevamente.')
+      alert('Error de conexión con la base de datos al cargar empleados.')
     } finally {
       setLoading(false)
     }

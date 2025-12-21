@@ -31,10 +31,9 @@ const SettingsLayout = () => {
             icon: Map,
             roles: [ROLES.ADMIN]
         },
-
         {
-            name: 'Sistema y Seguridad',
-            to: '/admin/configuracion/seguridad',
+            name: 'Control de Roles',
+            to: '/admin/configuracion/roles',
             icon: Shield,
             roles: [ROLES.ADMIN]
         },
