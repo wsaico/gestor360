@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import supabase from '@services/supabase'
 import { useAuth } from '@contexts/AuthContext'
 import employeeService from '@services/employeeService'
 import jobRoleService from '@services/jobRoleService'
@@ -37,6 +38,12 @@ const EmployeesPage = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+  const [itemsPerPage] = useState(10) // Can be made dynamic later
+
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [employeeToDelete, setEmployeeToDelete] = useState(null)
   const [showPermanentDeleteDialog, setShowPermanentDeleteDialog] = useState(false)
@@ -46,7 +53,16 @@ const EmployeesPage = () => {
 
   useEffect(() => {
     fetchEmployees()
-  }, [statusFilter])
+  }, [statusFilter, currentPage]) // Re-fetch on filter or page change
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1); // Reset to page 1 on new search
+      fetchEmployees();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0]
@@ -87,16 +103,34 @@ const EmployeesPage = () => {
               full_name: fullName,
               email: row['EMAIL'],
               phone: row['TELEFONO'] || '',
-              address: row['DIRECCION'] || '',
               role_name: row['CARGO'] || 'Empleado',
-              contract_type: 'INDETERMINADO', // Default
-              work_schedule: 'L-V 8AM-5PM', // Default
+              contract_type: row['TIPO CONTRATO'] || 'INDETERMINADO',
+              work_schedule: row['HORARIO'] || 'L-V 8AM-5PM',
               status: 'ACTIVO',
               hire_date: row['FECHA INGRESO'] ? new Date(row['FECHA INGRESO']).toISOString() : new Date().toISOString(),
-              salary: Number(row['SALARIO'] || 0)
+              salary: Number(row['SALARIO'] || 0),
+              birth_date: row['FECHA NACIMIENTO'] ? new Date(row['FECHA NACIMIENTO']).toISOString() : null,
+              uniform_size: row['TALLA UNIFORME'] || 'M'
             }
 
-            await employeeService.create(employeeData)
+            // Verificar si ya existe por DNI
+            let existingEmployee = await employeeService.getByDni(String(row['DNI']))
+
+            // Si no existe por DNI, verificamos por Email (para evitar error de Auth duplicado)
+            if (!existingEmployee && row['EMAIL']) {
+              existingEmployee = await employeeService.getByEmail(row['EMAIL'])
+            }
+
+            if (existingEmployee) {
+              // Update existing
+              // Remove fields that shouldn't be updated loosely if needed, or update all.
+              // We don't update email to avoid auth conflicts usually, but here we can try.
+              const { email, ...updateData } = employeeData // Exclude email from update to be safe
+              await employeeService.update(existingEmployee.id, updateData)
+            } else {
+              // Create new
+              await employeeService.create(employeeData)
+            }
             successCount++
           } catch (err) {
             console.error('Error importing row:', row, err)
@@ -133,10 +167,13 @@ const EmployeesPage = () => {
           'APELLIDOS': 'PEREZ',
           'EMAIL': 'juan.perez@empresa.com',
           'TELEFONO': '999999999',
-          'DIRECCION': 'AV. SIEMPRE VIVA 123',
           'CARGO': 'OPERARIO',
           'FECHA INGRESO': '2024-01-01',
-          'SALARIO': 1500
+          'SALARIO': 1500,
+          'FECHA NACIMIENTO': '1990-01-01',
+          'TALLA UNIFORME': 'M',
+          'TIPO CONTRATO': 'INDETERMINADO',
+          'HORARIO': 'L-V 8AM-5PM'
         }
       ]
 
@@ -161,8 +198,15 @@ const EmployeesPage = () => {
     try {
       setLoading(true)
       const stationId = station?.id || null
-      const data = await employeeService.getAll(stationId)
+      // Server-side filtering & pagination
+      const filters = {
+        status: statusFilter,
+        search: searchTerm
+      }
+      const { data, count } = await employeeService.getAll(stationId, filters, currentPage, itemsPerPage)
+
       setEmployees(data)
+      setTotalPages(Math.ceil((count || 0) / itemsPerPage))
     } catch (error) {
       console.error('Error fetching employees:', error)
       alert('Error al cargar los empleados. Por favor, intente nuevamente.')
@@ -171,36 +215,28 @@ const EmployeesPage = () => {
     }
   }
 
+  // NOTE: Client-side logic for filteredEmployees removed as we now use server-side.
+  const filteredEmployees = employees;
+
   // ... (rest of filtering logic, delete handlers same as before)
 
   /**
    * Filtra empleados según búsqueda y estado
    */
-  const filteredEmployees = employees.filter((emp) => {
-    const matchesSearch =
-      emp.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.dni.includes(searchTerm) ||
-      emp.role_name.toLowerCase().includes(searchTerm.toLowerCase())
-
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'active' && emp.status === EMPLOYEE_STATUS.ACTIVE) ||
-      (statusFilter === 'inactive' && emp.status === EMPLOYEE_STATUS.INACTIVE)
-
-    return matchesSearch && matchesStatus
-  })
+  // Client-side filtering removed in favor of Server-side pagination
+  // const filteredEmployees = ... (Removed)
 
   /**
    * Maneja la eliminación de un empleado (cambio a estado CESADO)
    */
   const handleDeleteClick = (employee) => {
-    
+
     setEmployeeToDelete(employee)
     setShowConfirmDialog(true)
   }
 
   const handleConfirmDelete = async () => {
-    
+
 
     if (!employeeToDelete) {
       console.error('No employee to delete')
@@ -208,9 +244,9 @@ const EmployeesPage = () => {
     }
 
     try {
-      
+
       const result = await employeeService.markAsInactive(employeeToDelete.id)
-      
+
 
       setEmployees((prev) =>
         prev.map((emp) =>
@@ -221,7 +257,7 @@ const EmployeesPage = () => {
       setShowConfirmDialog(false)
       setEmployeeToDelete(null)
       alert('Empleado marcado como cesado correctamente')
-      
+
     } catch (error) {
       console.error('Error updating employee:', error)
       console.error('Error details:', {
@@ -236,7 +272,7 @@ const EmployeesPage = () => {
   }
 
   const handleCancelDelete = () => {
-    
+
     setShowConfirmDialog(false)
     setEmployeeToDelete(null)
   }
@@ -245,13 +281,13 @@ const EmployeesPage = () => {
    * Maneja la eliminación permanente de un empleado
    */
   const handlePermanentDeleteClick = (employee) => {
-    
+
     setEmployeeToDeletePermanently(employee)
     setShowPermanentDeleteDialog(true)
   }
 
   const handleConfirmPermanentDelete = async () => {
-    
+
 
     if (!employeeToDeletePermanently) {
       console.error('No employee to delete permanently')
@@ -259,9 +295,9 @@ const EmployeesPage = () => {
     }
 
     try {
-      
+
       await employeeService.delete(employeeToDeletePermanently.id)
-      
+
 
       // Remover de la lista
       setEmployees((prev) => prev.filter(emp => emp.id !== employeeToDeletePermanently.id))
@@ -278,7 +314,7 @@ const EmployeesPage = () => {
   }
 
   const handleCancelPermanentDelete = () => {
-    
+
     setShowPermanentDeleteDialog(false)
     setEmployeeToDeletePermanently(null)
   }
@@ -326,6 +362,28 @@ const EmployeesPage = () => {
           >
             <Upload className="w-4 h-4" />
             <span>Carga Masiva</span>
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm("¿Desea buscar y restaurar usuarios ocultos? Úselo si tiene problemas de 'User already registered'.")) return;
+              try {
+                setLoading(true);
+                const { data, error } = await supabase.rpc('sync_zombie_users');
+                if (error) throw error;
+                alert(`Proceso completado: ${data[0]?.details || 'Sincronización finalizada'}`);
+                fetchEmployees();
+              } catch (e) {
+                console.error(e);
+                alert('Error al sincronizar: ' + e.message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="btn btn-secondary btn-md inline-flex items-center space-x-2 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 border-yellow-200"
+            title="Reparar usuarios duplicados/fantasmas"
+          >
+            <User className="w-4 h-4" />
+            <span className="hidden sm:inline">Reparar</span>
           </button>
           <button
             onClick={() => navigate('/rrhh/empleados/nuevo')}
@@ -555,8 +613,77 @@ const EmployeesPage = () => {
         </div>
       </div>
 
+      {/* Pagination Controls */}
+      < div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4 rounded-lg shadow-sm" >
+        <div className="flex flex-1 justify-between sm:hidden">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Anterior
+          </button>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Siguiente
+          </button>
+        </div>
+        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-gray-700">
+              Mostrando página <span className="font-medium">{currentPage}</span> de <span className="font-medium">{totalPages || 1}</span>
+            </p>
+          </div>
+          <div>
+            <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+              >
+                <span className="sr-only">Anterior</span>
+                &lt;
+              </button>
+
+              {/* Simple Page Numbers */}
+              {[...Array(totalPages)].map((_, i) => {
+                const p = i + 1;
+                // Show current, first, last, and neighbors (simplified)
+                if (p !== 1 && p !== totalPages && Math.abs(currentPage - p) > 2) return null;
+
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    aria-current={currentPage === p ? 'page' : undefined}
+                    className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${currentPage === p
+                        ? 'bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                        : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-offset-0'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+              >
+                <span className="sr-only">Siguiente</span>
+                &gt;
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div >
+
       {/* Modal de confirmación - Marcar como cesado */}
-      <ConfirmDialog
+      < ConfirmDialog
         isOpen={showConfirmDialog}
         title="Marcar como Cesado"
         message={`¿Está seguro de marcar a "${employeeToDelete?.full_name}" como cesado? Esta acción cambiará el estado del empleado.`}
@@ -568,7 +695,7 @@ const EmployeesPage = () => {
       />
 
       {/* Modal de confirmación - Eliminar permanentemente */}
-      <ConfirmDialog
+      < ConfirmDialog
         isOpen={showPermanentDeleteDialog}
         title="⚠️ ELIMINAR PERMANENTEMENTE"
         message={`¿Está COMPLETAMENTE SEGURO de eliminar permanentemente a "${employeeToDeletePermanently?.full_name}"?\n\nEsta acción NO se puede deshacer y eliminará todos los datos asociados (documentos, etc.).\n\nSolo elimine si se equivocó al crear el empleado.`}
@@ -578,7 +705,7 @@ const EmployeesPage = () => {
         onConfirm={handleConfirmPermanentDelete}
         onCancel={handleCancelPermanentDelete}
       />
-    </div>
+    </div >
   )
 }
 

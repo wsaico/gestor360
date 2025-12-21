@@ -196,7 +196,12 @@ const NotificationSettings = () => {
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center">
                         <Bell className="w-5 h-5 mr-2 text-primary-600" />
-                        Tipos de Alerta Activos
+                        <div>
+                            Tipos de Alerta Activos
+                            <p className="text-xs font-normal text-gray-500 mt-1">
+                                Las alertas se envían a los usuarios con rol <strong>SUPERVISOR</strong> y <strong>ADMIN</strong> de la estación correspondiente.
+                            </p>
+                        </div>
                     </h3>
 
                     <div className="flex items-center">

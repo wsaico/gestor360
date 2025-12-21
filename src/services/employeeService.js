@@ -14,21 +14,29 @@ class EmployeeService {
    * @param {Object} filters - Filtros opcionales { status, search }
    * @returns {Promise<Array>}
    */
-  async getAll(stationId = null, filters = {}) {
+  /**
+   * Obtiene todos los empleados de una estación con paginación
+   * @param {string} stationId - ID de la estación (opcional para Admin Global)
+   * @param {Object} filters - Filtros opcionales { status, search, activeOnly }
+   * @param {number} page - Número de página (1-based)
+   * @param {number} limit - Items por página
+   * @returns {Promise<{data: Array, count: number}>}
+   */
+  async getAll(stationId = null, filters = {}, page = 1, limit = 50) {
     try {
       let query = supabase
         .from('employees')
         .select(`
           *,
           station:stations(id, code, name, location)
-        `)
+        `, { count: 'exact' })
         .order('created_at', { ascending: false })
 
       if (stationId) {
         query = query.eq('station_id', stationId)
       }
 
-      if (filters.status) {
+      if (filters.status && filters.status !== 'all') {
         query = query.eq('status', filters.status)
       }
 
@@ -37,10 +45,21 @@ class EmployeeService {
         query = query.neq('status', 'CESADO')
       }
 
-      const { data, error } = await query
+      if (filters.search) {
+        const term = filters.search.toLowerCase()
+        // Supabase basic search - for complex search consider RPC or text search
+        query = query.or(`full_name.ilike.%${term}%,dni.ilike.%${term}%`)
+      }
+
+      // Pagination
+      const from = (page - 1) * limit
+      const to = from + limit - 1
+      query = query.range(from, to)
+
+      const { data, error, count } = await query
 
       if (error) throw error
-      return data || []
+      return { data: data || [], count: count || 0 }
     } catch (error) {
       console.error('Error fetching employees:', error)
       throw error
@@ -68,6 +87,48 @@ class EmployeeService {
     } catch (error) {
       console.error('Error fetching employee:', error)
       throw error
+    }
+  }
+
+  /**
+   * Obtiene un empleado por DNI (Admin context)
+   * @param {string} dni
+   * @returns {Promise<Object|null>}
+   */
+  async getByDni(dni) {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, dni')
+        .eq('dni', dni)
+        .maybeSingle()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error fetching employee by DNI:', error)
+      return null
+    }
+  }
+
+  /**
+   * Obtiene un empleado por Email
+   * @param {string} email
+   * @returns {Promise<Object|null>}
+   */
+  async getByEmail(email) {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, email')
+        .eq('email', email)
+        .maybeSingle()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error fetching employee by Email:', error)
+      return null
     }
   }
 
@@ -244,7 +305,7 @@ class EmployeeService {
    */
   async getByDocumentNumber(dni) {
     try {
-      
+
       const { data, error } = await supabase.rpc('get_employee_by_dni_public', {
         p_dni: dni
       })
