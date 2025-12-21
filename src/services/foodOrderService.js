@@ -110,6 +110,37 @@ class FoodOrderService {
   }
 
   /**
+   * Obtiene el historial de pedidos de un empleado (Público)
+   * Limitado a los últimos 50 pedidos
+   */
+  async getPublicHistory(employeeId) {
+    try {
+      const { data, error } = await supabase
+        .from('food_orders')
+        .select(`
+          id, 
+          menu_date, 
+          meal_type, 
+          selected_option, 
+          status, 
+          notes, 
+          cost_applied, 
+          company_subsidy_snapshot, 
+          created_at
+        `)
+        .eq('employee_id', employeeId)
+        .order('menu_date', { ascending: false })
+        .limit(50)
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching history:', error)
+      throw error
+    }
+  }
+
+  /**
    * Obtiene los pedidos de un empleado
 
    * @param {string} employeeId - ID del empleado

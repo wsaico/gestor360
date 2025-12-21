@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
     UtensilsCrossed, Coffee, Sun, Moon, Check, AlertCircle,
     ChevronRight, User, MapPin, CheckCircle2,
-    ArrowRight, MessageSquare, Clock, Utensils, AlertTriangle // Added Utensils and AlertTriangle
+    ArrowRight, MessageSquare, Clock, Utensils, AlertTriangle, History, X // Added History, X
 } from 'lucide-react'
 import menuService from '@services/menuService'
 import employeeService from '@services/employeeService'
@@ -36,10 +36,27 @@ const PublicMenuPage = () => {
     const [announcements, setAnnouncements] = useState([])
     const [showAnnouncements, setShowAnnouncements] = useState(false)
 
+    // History State
+    const [showHistory, setShowHistory] = useState(false)
+    const [historyOrders, setHistoryOrders] = useState([])
+
     const [station, setStation] = useState(null) // Separate station state
     const [menus, setMenus] = useState([])
     const [existingOrder, setExistingOrder] = useState(null) // Check if already ordered
     const [pricing, setPricing] = useState(null)
+
+    // Auto Open History feature
+    const [autoOpenHistory, setAutoOpenHistory] = useState(false)
+
+    useEffect(() => {
+        if (currentStep === STEPS.MENU_SELECTION && autoOpenHistory && employee) {
+            // Use timeout to ensure render
+            setTimeout(() => {
+                loadHistory()
+                setAutoOpenHistory(false)
+            }, 500)
+        }
+    }, [currentStep, autoOpenHistory, employee])
 
     // Selection State
     const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]) // Today
@@ -193,6 +210,23 @@ const PublicMenuPage = () => {
         } catch (err) {
             console.error('Error loading station data', err)
             throw err
+        }
+    }
+
+    const loadHistory = async () => {
+        if (!employee) return
+        try {
+            // Don't set main loading to avoid full screen block, just local logic if needed
+            // But main loading is fine for modal trigger
+            setLoading(true)
+            const history = await foodOrderService.getPublicHistory(employee.id || employee.employee_id)
+            setHistoryOrders(history)
+            setShowHistory(true)
+        } catch (error) {
+            console.error(error)
+            setError('Error al cargar historial')
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -442,6 +476,23 @@ const PublicMenuPage = () => {
                                     Verificando...
                                 </div>
                             )}
+
+                            <div className="pt-2 border-t border-gray-100 mt-2">
+                                <button
+                                    onClick={async () => {
+                                        if (dni.length === 8) {
+                                            setAutoOpenHistory(true)
+                                            await fetchEmployee(dni)
+                                        } else {
+                                            setError('Para ver tu historial, ingresa tu DNI completo arriba.')
+                                        }
+                                    }}
+                                    className="w-full py-3 text-gray-500 font-medium text-sm hover:bg-gray-50 rounded-xl transition-colors flex items-center justify-center gap-2 group"
+                                >
+                                    <History className="w-4 h-4 group-hover:text-primary-600 transition-colors" />
+                                    <span className="group-hover:text-primary-600 transition-colors">Ver Mis Pedidos Anteriores</span>
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                     <p className="mt-8 text-primary-100 text-xs opacity-70">Gestor360° Alimentación</p>
@@ -492,6 +543,7 @@ const PublicMenuPage = () => {
                         className="max-w-md mx-auto min-h-screen bg-gray-50 relative"
                     >
                         {/* Header Pinned */}
+                        {/* Header Pinned */}
                         <div className="sticky top-0 z-30 bg-white shadow-sm border-b border-gray-100 px-4 py-3">
                             <div className="flex justify-between items-center mb-2">
                                 <div className="flex items-center gap-2">
@@ -500,9 +552,18 @@ const PublicMenuPage = () => {
                                         {station?.name || 'Estación'} {(station?.code && station.code !== 'UNK') ? `(${station.code})` : ''}
                                     </span>
                                 </div>
-                                <button onClick={resetFlow} className="text-xs text-gray-400 font-medium hover:text-red-500">
-                                    Salir
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={loadHistory}
+                                        className="flex items-center gap-1 text-xs font-bold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors border border-primary-100"
+                                    >
+                                        <History className="w-3.5 h-3.5" />
+                                        Mis Pedidos
+                                    </button>
+                                    <button onClick={resetFlow} className="text-xs text-gray-400 font-medium hover:text-red-500">
+                                        Salir
+                                    </button>
+                                </div>
                             </div>
                             <h2 className="text-xl font-bold text-gray-900 leading-tight">
                                 Hola, <span className="text-primary-600">{displayName}</span>
@@ -811,6 +872,113 @@ const PublicMenuPage = () => {
                 announcements={announcements}
                 onClose={() => setShowAnnouncements(false)}
             />
+
+            {/* History Modal */}
+            <AnimatePresence>
+                {showHistory && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6"
+                        onClick={() => setShowHistory(false)}
+                    >
+                        <motion.div
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                            className="bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] md:max-h-[80vh]"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-800">Mis Pedidos</h2>
+                                    <p className="text-xs text-gray-500">Historial reciente</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowHistory(false)}
+                                    className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                                >
+                                    <X size={20} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            <div className="bg-gray-50 border-b border-gray-100 p-4 flex justify-between text-xs text-gray-500">
+                                <span>Gastado: <b className="text-gray-800">S/ {historyOrders.reduce((sum, o) => sum + Number(o.cost_applied), 0).toFixed(2)}</b></span>
+                                <span>Ahorrado: <b className="text-green-600">S/ {historyOrders.reduce((sum, o) => sum + Number(o.company_subsidy_snapshot || 0), 0).toFixed(2)}</b></span>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {loading && Array.from({ length: 5 }).map((_, i) => (
+                                    <div key={i} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm animate-pulse flex gap-3 items-center">
+                                        <div className="w-1 h-12 bg-gray-100 rounded-full"></div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="flex justify-between">
+                                                <div className="h-3 bg-gray-100 rounded w-20"></div>
+                                                <div className="h-3 bg-gray-100 rounded w-12"></div>
+                                            </div>
+                                            <div className="h-3 bg-gray-100 rounded w-3/4"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {!loading && historyOrders.length === 0 && (
+                                    <div className="text-center py-12 text-gray-400">
+                                        <History className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                        <p>No tienes pedidos recientes.</p>
+                                    </div>
+                                )}
+                                {historyOrders.map(order => (
+                                    <div key={order.id} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                        {/* Status Line */}
+                                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${order.status === 'CONFIRMED' ? 'bg-green-500' :
+                                            order.status === 'CONSUMED' ? 'bg-blue-500' :
+                                                order.status === 'CANCELLED' ? 'bg-red-500' : 'bg-yellow-500'
+                                            }`} />
+
+                                        <div className="pl-3">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-bold text-gray-800 text-xs whitespace-nowrap">
+                                                        {formatDate(order.menu_date)}
+                                                    </p>
+                                                    <span className="text-[10px] font-bold tracking-wider text-gray-400 uppercase bg-gray-50 px-1.5 py-0.5 rounded">
+                                                        {MEAL_TYPE_LABELS[order.meal_type]}
+                                                    </span>
+                                                </div>
+                                                <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${order.status === 'CONFIRMED' ? 'bg-green-50 text-green-700' :
+                                                    order.status === 'CONSUMED' ? 'bg-blue-50 text-blue-700' :
+                                                        order.status === 'CANCELLED' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
+                                                    }`}>
+                                                    {order.status === 'PENDING' ? 'Pendiente' :
+                                                        order.status === 'CONFIRMED' ? 'Confirmado' :
+                                                            order.status === 'CONSUMED' ? 'Consumido' : 'Cancelado'}
+                                                </div>
+                                            </div>
+
+                                            <p className="text-xs text-gray-700 mb-1 truncate font-medium">
+                                                {order.selected_option}
+                                            </p>
+
+                                            <div className="flex justify-between items-center border-t border-gray-50 pt-1.5 mt-1 text-[10px]">
+                                                <div className="text-gray-400">
+                                                    {order.company_subsidy_snapshot > 0 && (
+                                                        <span>Ahorro: <span className="text-green-600">S/ {order.company_subsidy_snapshot}</span></span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-gray-400">Tu costo:</span>
+                                                    <span className="font-bold text-gray-900 text-xs">S/ {order.cost_applied}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
         </div >
     )
