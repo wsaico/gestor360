@@ -36,12 +36,17 @@ import RolePricingPage from '@pages/alimentacion/RolePricingPage'
 import FoodConfigPage from '@pages/alimentacion/FoodConfigPage'
 
 import ReportsPage from '@pages/alimentacion/ReportsPage'
-import AnnouncementsPage from '@pages/alimentacion/AnnouncementsPage' // Import Page
+
 
 // Módulos de Administración
 import StationsPage from '@pages/admin/StationsPage'
 import SystemUsersPage from '@pages/admin/SystemUsersPage'
+import AnnouncementsPage from '@pages/admin/announcements/AnnouncementsPage'
 // import SettingsPage from '@pages/admin/SettingsPage' // Deprecated
+
+// Kiosk & Public
+import KioskLayout from '@components/layout/KioskLayout'
+import StationDashboard from '@pages/public/StationDashboard'
 
 // Settings New Components
 import SettingsLayout from '@components/settings/SettingsLayout'
@@ -87,6 +92,11 @@ const AppRoutes = () => {
       {/* Rutas públicas */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/menu" element={<PublicMenuPage />} />
+
+      {/* Kiosk Mode (Public or Protected via IP/Token ideally, kept open for ease for now) */}
+      <Route element={<KioskLayout />}>
+        <Route path="/board/:stationId" element={<StationDashboard />} />
+      </Route>
 
       {/* Rutas protegidas con layout */}
       <Route
@@ -272,6 +282,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
               <SystemUsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/anuncios"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+              <AnnouncementsPage />
             </ProtectedRoute>
           }
         />

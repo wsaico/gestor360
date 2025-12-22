@@ -160,6 +160,12 @@ const menuItems = [
         title: 'Configuración',
         path: '/admin/configuracion',
         icon: Settings
+      },
+      {
+        title: 'Anuncios Digitales',
+        path: '/admin/anuncios',
+        icon: Megaphone,
+        roles: [ROLES.ADMIN, ROLES.SUPERVISOR]
       }
     ]
   }

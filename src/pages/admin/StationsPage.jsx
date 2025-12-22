@@ -9,7 +9,8 @@ import {
   Building2,
   AlertCircle,
   Archive,
-  ArchiveRestore
+  ArchiveRestore,
+  ExternalLink
 } from 'lucide-react'
 import { formatDate } from '@utils/helpers'
 
@@ -261,6 +262,15 @@ const StationsPage = () => {
                   >
                     <Edit className="w-4 h-4" />
                   </button>
+                  <a
+                    href={`/board/${station.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-900"
+                    title="Abrir Pantalla Pública (Monitor)"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
                   {station.is_active ? (
                     <button
                       onClick={() => handleArchive(station.id)}
