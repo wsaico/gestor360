@@ -256,6 +256,16 @@ const EmployeeForm = ({ employee, onSuccess, onCancel }) => {
                             className="input"
                         />
                     </div>
+                    <div>
+                        <label className="label">Fecha Ingreso</label>
+                        <input
+                            type="date"
+                            name="hire_date"
+                            value={formData.hire_date || ''}
+                            onChange={handleChange}
+                            className="input"
+                        />
+                    </div>
                 </div>
 
                 {/* Sección: Laboral */}

@@ -145,6 +145,21 @@ class MasterProductService {
         } catch (error) { throw error }
     }
 
+    /**
+     * Bulk create products
+     * @param {Array} products 
+     */
+    async createBulk(products) {
+        try {
+            const { data, error } = await supabase
+                .from('master_products')
+                .insert(products)
+                .select()
+            if (error) throw error
+            return data
+        } catch (error) { throw error }
+    }
+
     async updateProduct(id, productData) {
         try {
             const { data, error } = await supabase

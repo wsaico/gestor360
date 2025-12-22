@@ -131,9 +131,14 @@ export const generateDiscountReport = async (stationId, startDate, endDate, stat
       emp.dateAmounts[dateKey] += Number(order.employee_cost_snapshot || 0)
     })
 
-    const employees = Array.from(employeeMap.values()).sort((a, b) =>
-      a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
-    )
+    const employees = Array.from(employeeMap.values())
+      .filter(e => {
+        const total = Object.values(e.dateAmounts).reduce((a, b) => a + b, 0)
+        return total > 0
+      })
+      .sort((a, b) =>
+        a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
+      )
 
     // Headers
     const headerRow = [
@@ -201,8 +206,12 @@ export const generateDiscountReport = async (stationId, startDate, endDate, stat
  */
 export const generateBillingReport = async (stationId, startDate, endDate, stationName) => {
   try {
-    const orders = await getOrdersForReport(stationId, startDate, endDate)
-    if (orders.length === 0) throw new Error('No hay pedidos para generar el reporte')
+    let orders = await getOrdersForReport(stationId, startDate, endDate)
+
+    // FILTER: Exclude Courtesy/Visitor orders with 0 Value from ALL calculation (Summary, Breakdown, etc.)
+    orders = orders.filter(o => (Number(o.employee_cost_snapshot || 0) + Number(o.company_subsidy_snapshot || 0)) > 0)
+
+    if (orders.length === 0) throw new Error('No hay pedidos facturables para generar el reporte')
 
     const uniqueDates = [...new Set(orders.map(o => o.menu_date))].sort()
     const employeeMap = new Map()
@@ -227,9 +236,15 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
       emp.companyDates[dateKey] += Number(order.company_subsidy_snapshot || 0)
     })
 
-    const employees = Array.from(employeeMap.values()).sort((a, b) =>
-      a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
-    )
+    const employees = Array.from(employeeMap.values())
+      .filter(e => {
+        const totalEmp = Object.values(e.employeeDates).reduce((a, b) => a + b, 0)
+        const totalComp = Object.values(e.companyDates).reduce((a, b) => a + b, 0)
+        return (totalEmp + totalComp) > 0
+      })
+      .sort((a, b) =>
+        a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
+      )
 
     const baseHeaders = [
       createCell('ITEM', STYLE_HEADER),

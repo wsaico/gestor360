@@ -198,12 +198,24 @@ const FoodOrdersPage = () => {
             if (pricing) {
                 fullPrice = parseFloat(pricing.employee_cost) + parseFloat(pricing.company_subsidy)
 
-                if (formData.pricing_rule === 'STANDARD') { // Normal Employee Rate
+                // Check for Courtesy Visitor Logic
+                // If it's a Manual Order, we might have selected an employee. 
+                // Let's check the employee object from the list.
+                const selectedEmp = employees.find(e => e.id === formData.employee_id)
+                const isCourtesyVisitor = selectedEmp?.is_visitor && selectedEmp?.visitor_discount_type === 'COURTESY'
+
+                if (isCourtesyVisitor) {
+                    // Override for Courtesy Visitor: Cost 0, Pricing Rule COURTESY (Logic below handles it but we force it)
+                    console.log('Aplicando lógica de CORTESÍA para visitante')
+                    costUser = 0
+                    subsidyCompany = 0 // Zero Cost for Everyone (Just a record)
+                    formData.pricing_rule = 'COURTESY' // Force rule
+                } else if (formData.pricing_rule === 'STANDARD') { // Normal Employee Rate
                     costUser = parseFloat(pricing.employee_cost)
                     subsidyCompany = parseFloat(pricing.company_subsidy)
-                } else if (formData.pricing_rule === 'COURTESY') { // Company pays all
+                } else if (formData.pricing_rule === 'COURTESY') { // Manual Override
                     costUser = 0
-                    subsidyCompany = fullPrice
+                    subsidyCompany = 0
                 } else if (formData.pricing_rule === 'FULL') { // Visitor pays all (Zero subsidy)
                     costUser = fullPrice
                     subsidyCompany = 0
@@ -211,6 +223,11 @@ const FoodOrdersPage = () => {
             } else {
                 // Fallback if no pricing found 
                 console.warn('No pricing found for employee, defaulting to 0')
+                // If courtesy visitor without pricing, still 0
+                const selectedEmp = employees.find(e => e.id === formData.employee_id)
+                if (selectedEmp?.is_visitor && selectedEmp?.visitor_discount_type === 'COURTESY') {
+                    formData.pricing_rule = 'COURTESY'
+                }
             }
 
             const payload = {

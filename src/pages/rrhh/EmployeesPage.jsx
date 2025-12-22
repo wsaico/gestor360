@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import supabase from '@services/supabase'
 import { useAuth } from '@contexts/AuthContext'
+import { useNotification } from '@contexts/NotificationContext'
 import employeeService from '@services/employeeService'
 import jobRoleService from '@services/jobRoleService'
 import stationService from '@services/stationService'
 import ConfirmDialog from '@components/ConfirmDialog'
 import Modal from '@components/Modal'
 import EmployeeForm from '@components/rrhh/EmployeeForm'
+import EmployeeImportModal from '@components/rrhh/EmployeeImportModal'
 import * as XLSX from 'xlsx'
 import {
   Plus,
@@ -36,6 +38,7 @@ import { formatDate } from '@utils/helpers'
 const EmployeesPage = () => {
   const navigate = useNavigate()
   const { user, station } = useAuth()
+  const { notify } = useNotification()
   const isAdmin = user?.role === 'ADMIN'
 
   const [employees, setEmployees] = useState([])
@@ -57,9 +60,10 @@ const EmployeesPage = () => {
 
   // Modal State
   const [showModal, setShowModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
 
-  const fileInputRef = useRef(null)
+
 
   useEffect(() => {
     fetchEmployees()
@@ -81,157 +85,7 @@ const EmployeesPage = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target.result
-        const wb = XLSX.read(bstr, { type: 'binary' })
-        const wsname = wb.SheetNames[0]
-        const ws = wb.Sheets[wsname]
-        const data = XLSX.utils.sheet_to_json(ws)
-
-        if (data.length === 0) {
-          alert('El archivo está vacío')
-          return
-        }
-
-        let successCount = 0
-        let errors = []
-
-        setLoading(true)
-
-        for (const row of data) {
-          try {
-            // Helper to get value from row case-insensitively
-            const getRowVal = (key) => {
-              const k = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase())
-              return k ? row[k] : null
-            }
-
-            const dni = String(getRowVal('DNI') || '')
-            const names = getRowVal('NOMBRES')
-            const email = getRowVal('EMAIL')
-
-            // Basic Validation
-            if (!dni || !names || !email) {
-              if (dni) errors.push(`DNI ${dni}: Faltan datos obligatorios (DNI, NOMBRES o EMAIL)`)
-              continue
-            }
-
-            const fullName = `${names} ${getRowVal('APELLIDOS') || ''}`.trim()
-
-            // Resolve Area ID if possible
-            let areaId = null
-            const areaName = getRowVal('AREA') || getRowVal('ÁREA')
-            if (areaName && station?.id) {
-              try {
-                const stationAreas = await areaService.getAll(station.id, true)
-                const foundArea = stationAreas.find(a => a.name.toUpperCase() === areaName.toUpperCase())
-                if (foundArea) areaId = foundArea.id
-              } catch (areaErr) {
-                console.warn('Error resolving area:', areaErr)
-              }
-            }
-
-            const employeeData = {
-              station_id: station?.id,
-              dni: dni,
-              full_name: fullName,
-              email: email,
-              phone: getRowVal('TELEFONO') || '',
-              role_name: getRowVal('CARGO') || 'Empleado',
-              area_id: areaId,
-              contract_type: getRowVal('TIPO CONTRATO') || 'INDETERMINADO',
-              work_schedule: getRowVal('HORARIO') || 'FULL_8HRS',
-              status: 'ACTIVO',
-              hire_date: getRowVal('FECHA INGRESO') ? new Date(getRowVal('FECHA INGRESO')).toISOString() : new Date().toISOString(),
-              salary: Number(getRowVal('SALARIO') || 0),
-              birth_date: getRowVal('FECHA NACIMIENTO') ? new Date(getRowVal('FECHA NACIMIENTO')).toISOString() : null,
-              uniform_size: getRowVal('TALLA UNIFORME') || 'M'
-            }
-
-            // Verificar si ya existe por DNI
-            let existingEmployee = await employeeService.getByDni(String(row['DNI']))
-
-            // Si no existe por DNI, verificamos por Email (para evitar error de Auth duplicado)
-            if (!existingEmployee && row['EMAIL']) {
-              existingEmployee = await employeeService.getByEmail(row['EMAIL'])
-            }
-
-            if (existingEmployee) {
-              // Update existing
-              // Remove fields that shouldn't be updated loosely if needed, or update all.
-              // We don't update email to avoid auth conflicts usually, but here we can try.
-              const { email, ...updateData } = employeeData // Exclude email from update to be safe
-              await employeeService.update(existingEmployee.id, updateData)
-            } else {
-              // Create new
-              await employeeService.create(employeeData)
-            }
-            successCount++
-          } catch (err) {
-            console.error('Error importing row:', row, err)
-            errors.push(`${row['DNI'] || 'Sin DNI'}: ${err.message}`)
-          }
-        }
-
-        await fetchEmployees()
-
-        let msg = `Importación completada.\nExitosos: ${successCount}`
-        if (errors.length > 0) {
-          msg += `\nFallidos: ${errors.length}\n\nDetalles:\n${errors.slice(0, 10).join('\n')}`
-          if (errors.length > 10) msg += '\n...'
-        }
-        alert(msg)
-
-      } catch (error) {
-        console.error('Error parsing file:', error)
-        alert('Error al procesar el archivo Excel')
-      } finally {
-        setLoading(false)
-        if (fileInputRef.current) fileInputRef.current.value = ''
-      }
-    }
-    reader.readAsBinaryString(file)
-  }
-
-  const handleDownloadTemplate = () => {
-    try {
-      const templateData = [
-        {
-          'DNI': '12345678',
-          'NOMBRES': 'JUAN',
-          'APELLIDOS': 'PEREZ',
-          'EMAIL': 'juan.perez@empresa.com',
-          'TELEFONO': '999999999',
-          'CARGO': 'Supervisor de Estación',
-          'ÁREA': 'RAMPA',
-          'FECHA INGRESO': '2024-01-01',
-          'SALARIO': 1500,
-          'FECHA NACIMIENTO': '1990-01-01',
-          'TALLA UNIFORME': 'M',
-          'TIPO CONTRATO': 'INDETERMINADO',
-          'HORARIO': 'FULL_8HRS'
-        }
-      ]
-
-      const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.json_to_sheet(templateData)
-
-      const wscols = Object.keys(templateData[0]).map(k => ({ wch: 20 }))
-      ws['!cols'] = wscols
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Empleados')
-      XLSX.writeFile(wb, 'Plantilla_Empleados.xlsx')
-    } catch (error) {
-      console.error('Error creating template:', error)
-      alert('Error al descargar la plantilla')
-    }
-  }
+  // Legacy handleFileUpload and handleDownloadTemplate removed in favor of EmployeeImportModal
 
   /**
    * Obtiene la lista de empleados desde Supabase
@@ -256,7 +110,7 @@ const EmployeesPage = () => {
       setTotalPages(Math.ceil((count || 0) / itemsPerPage))
     } catch (error) {
       console.error('Error fetching employees:', error)
-      alert('Error de conexión con la base de datos al cargar empleados.')
+      notify.error('Error al cargar empleados: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -303,7 +157,7 @@ const EmployeesPage = () => {
 
       setShowConfirmDialog(false)
       setEmployeeToDelete(null)
-      alert('Empleado marcado como cesado correctamente')
+      notify.success('Empleado marcado como cesado correctamente')
 
     } catch (error) {
       console.error('Error updating employee:', error)
@@ -314,7 +168,7 @@ const EmployeesPage = () => {
       })
       setShowConfirmDialog(false)
       setEmployeeToDelete(null)
-      alert(error.message || 'Error al actualizar el empleado. Verifica que tengas los permisos necesarios.')
+      notify.error(error.message || 'Error al actualizar el empleado')
     }
   }
 
@@ -351,12 +205,12 @@ const EmployeesPage = () => {
 
       setShowPermanentDeleteDialog(false)
       setEmployeeToDeletePermanently(null)
-      alert('Empleado eliminado permanentemente')
+      notify.success('Empleado eliminado permanentemente')
     } catch (error) {
       console.error('Error deleting employee permanently:', error)
       setShowPermanentDeleteDialog(false)
       setEmployeeToDeletePermanently(null)
-      alert(error.message || 'Error al eliminar el empleado permanentemente.')
+      notify.error(error.message || 'Error al eliminar el empleado permanentemente.')
     }
   }
 
@@ -388,40 +242,27 @@ const EmployeesPage = () => {
           </p>
         </div>
         <div className="flex gap-2 mt-4 sm:mt-0">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            className="hidden"
-            accept=".xlsx, .xls"
-          />
           <button
-            onClick={handleDownloadTemplate}
-            className="btn btn-secondary btn-md inline-flex items-center space-x-2"
-            title="Descargar Plantilla Excel"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Plantilla</span>
-          </button>
-          <button
-            onClick={() => fileInputRef.current.click()}
-            className="btn btn-secondary btn-md inline-flex items-center space-x-2"
+            onClick={() => setShowImportModal(true)}
+            className="btn btn-secondary btn-md inline-flex items-center space-x-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+            title="Importar empleados desde Excel"
           >
             <Upload className="w-4 h-4" />
-            <span>Carga Masiva</span>
+            <span className="hidden sm:inline">Importar</span>
           </button>
+
           <button
             onClick={async () => {
-              if (!confirm("¿Desea buscar y restaurar usuarios ocultos? Úselo si tiene problemas de 'User already registered'.")) return;
+              if (!window.confirm("¿Desea buscar y restaurar usuarios ocultos?")) return;
               try {
                 setLoading(true);
                 const { data, error } = await supabase.rpc('sync_zombie_users');
                 if (error) throw error;
-                alert(`Proceso completado: ${data[0]?.details || 'Sincronización finalizada'}`);
+                notify.success(`Sincronización finalizada: ${data[0]?.details || 'OK'}`);
                 fetchEmployees();
               } catch (e) {
                 console.error(e);
-                alert('Error al sincronizar: ' + e.message);
+                notify.error('Error al sincronizar: ' + e.message);
               } finally {
                 setLoading(false);
               }
@@ -573,6 +414,9 @@ const EmployeesPage = () => {
                 </th>
                 <th className="gestor-th">
                   Estado
+                </th>
+                <th className="gestor-th">
+                  Ingreso
                 </th>
                 <th className="gestor-th text-right sticky right-0 z-10 bg-gray-50 dark:bg-gray-800 shadow-[-5px_0_5px_-5px_rgba(0,0,0,0.1)]">
                   Acciones
@@ -777,6 +621,17 @@ const EmployeesPage = () => {
         type="danger"
         onConfirm={handleConfirmPermanentDelete}
         onCancel={handleCancelPermanentDelete}
+      />
+
+      {/* Import Modal */}
+      <EmployeeImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          fetchEmployees()
+          setShowImportModal(false)
+        }}
+        stationId={station?.id}
       />
 
       {/* Modal de Creación/Edición */}

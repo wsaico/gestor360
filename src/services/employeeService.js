@@ -91,6 +91,28 @@ class EmployeeService {
   }
 
   /**
+   * Crea múltiples empleados
+   * @param {Array} employees - Lista de empleados a crear
+   * @returns {Promise<Array>} - Empleados creados
+   */
+  async createBulk(employees) {
+    try {
+      if (!employees || employees.length === 0) return []
+
+      const { data, error } = await supabase
+        .from('employees')
+        .insert(employees)
+        .select()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error bulk creating employees:', error)
+      throw new Error(error.message || 'Error al crear empleados masivamente')
+    }
+  }
+
+  /**
    * Obtiene un empleado por DNI (Admin context)
    * @param {string} dni
    * @returns {Promise<Object|null>}

@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import InventoryImportModal from '@components/sst/InventoryImportModal'
+
 import { EPP_ITEM_TYPES } from '@utils/constants'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@contexts/AuthContext'
@@ -14,7 +16,7 @@ import supabase from '@services/supabase'
 import AddStockModal from '@components/sst/AddStockModal'
 import ConfirmDialog from '@components/ConfirmDialog'
 import SearchableSelect from '@components/common/SearchableSelect'
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import {
   Plus,
   Search,
@@ -73,6 +75,9 @@ const InventoryPage = () => {
   // States for Add Stock Modal
   const [showStockModal, setShowStockModal] = useState(false)
   const [stockItem, setStockItem] = useState(null)
+
+  // Import Modal State
+  const [showImportModal, setShowImportModal] = useState(false)
 
   // State for ConfirmDialog
   const [confirmDialog, setConfirmDialog] = useState({
@@ -400,6 +405,29 @@ const InventoryPage = () => {
     XLSX.writeFile(wb, 'Plantilla.xlsx')
   }
 
+  // ==========================================
+  // EXPORTACION EXCEL AVANZADA
+  // ==========================================
+  const STYLE_HEADER = {
+    fill: { fgColor: { rgb: "1E3A8A" } }, // Azul Corporativo
+    font: { color: { rgb: "FFFFFF" }, bold: true, sz: 12 },
+    alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+  }
+
+  const STYLE_CELL = {
+    font: { sz: 11 },
+    alignment: { horizontal: "left", vertical: "center" },
+    border: { top: { style: "thin", color: { rgb: "D1D5DB" } }, bottom: { style: "thin", color: { rgb: "D1D5DB" } }, left: { style: "thin", color: { rgb: "D1D5DB" } }, right: { style: "thin", color: { rgb: "D1D5DB" } } }
+  }
+
+  const STYLE_CELL_CENTER = { ...STYLE_CELL, alignment: { horizontal: "center", vertical: "center" } }
+  const STYLE_NUMBER = { ...STYLE_CELL, alignment: { horizontal: "right", vertical: "center" } }
+  const STYLE_TITLE = { font: { bold: true, sz: 16, color: { rgb: "111827" } }, alignment: { horizontal: "left" } }
+  const STYLE_SUBTITLE = { font: { sz: 12, color: { rgb: "4B5563" } }, alignment: { horizontal: "left" } }
+
+  const createCell = (v, s = STYLE_CELL) => ({ v, s })
+
   const handleExport = () => {
     try {
       if (items.length === 0) {
@@ -407,27 +435,81 @@ const InventoryPage = () => {
         return
       }
 
-      const exportData = items.map(item => ({
-        'NOMBRE': item.name,
-        'CODIGO SAP': item.sap_code || '',
-        'TIPO': item.item_type,
-        'AREA': areas.find(a => a.id === item.area_id)?.name || 'General / Planta',
-        'DESCRIPCION': item.description || '',
-        'TALLA': item.size || '',
-        'UNIDAD': item.unit,
-        'VIDA UTIL (MESES)': item.useful_life_months,
-        'STOCK ACTUAL': item.stock_current,
-        'STOCK MIN': item.stock_min,
-        'STOCK MAX': item.stock_max,
-        'RESPONSABLE': item.responsible || '',
-        ...(valuationEnabled ? { [`PRECIO (${currencySymbol})`]: item.unit_price } : {})
-      }))
+      // 1. Data Processing
+      const dataRows = items.map((item, index) => {
+        const areaName = areas.find(a => a.id === item.area_id)?.name || 'General'
+        return [
+          createCell(index + 1, STYLE_CELL_CENTER),
+          createCell(item.name, STYLE_CELL),
+          createCell(item.sap_code || '-', STYLE_CELL_CENTER),
+          createCell(item.item_type, STYLE_CELL_CENTER),
+          createCell(areaName, STYLE_CELL),
+          createCell(item.description || '-', STYLE_CELL),
+          createCell(item.size || '-', STYLE_CELL_CENTER),
+          createCell(item.unit, STYLE_CELL_CENTER),
+          createCell(item.useful_life_months, STYLE_CELL_CENTER),
+          createCell(item.stock_current, { ...STYLE_CELL_CENTER, font: { bold: true, color: { rgb: item.stock_current <= 0 ? "EF4444" : "000000" } } }),
+          createCell(item.stock_min, STYLE_CELL_CENTER),
+          createCell(item.responsible || '-', STYLE_CELL),
+          ...(valuationEnabled ? [createCell(item.unit_price, STYLE_NUMBER)] : [])
+        ]
+      })
 
+      // 2. Headers
+      const headers = [
+        createCell('N°', STYLE_HEADER),
+        createCell('NOMBRE DEL ITEM', STYLE_HEADER),
+        createCell('CODIGO SAP', STYLE_HEADER),
+        createCell('TIPO', STYLE_HEADER),
+        createCell('AREA', STYLE_HEADER),
+        createCell('DESCRIPCION', STYLE_HEADER),
+        createCell('TALLA', STYLE_HEADER),
+        createCell('UNIDAD', STYLE_HEADER),
+        createCell('VIDA UTIL (Meses)', STYLE_HEADER),
+        createCell('STOCK ACTUAL', STYLE_HEADER),
+        createCell('STOCK MIN', STYLE_HEADER),
+        createCell('RESPONSABLE', STYLE_HEADER),
+        ...(valuationEnabled ? [createCell(`PRECIO (${currencySymbol})`, STYLE_HEADER)] : [])
+      ]
+
+      // 3. Document Structure
+      const wsData = [
+        [createCell('REPORTE GENERAL DE INVENTARIO SST', STYLE_TITLE)],
+        [createCell(`Estación: ${station?.name || 'Todas'} | Fecha: ${new Date().toLocaleDateString()}`, STYLE_SUBTITLE)],
+        [createCell('')], // Spacer
+        headers,
+        ...dataRows
+      ]
+
+      // 4. Workbook Creation
       const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.json_to_sheet(exportData)
+      const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+      // 5. Configs (Column Widths, Merges)
+      ws['!cols'] = [
+        { wch: 5 },  // N
+        { wch: 35 }, // Nombre
+        { wch: 15 }, // SAP
+        { wch: 15 }, // Tipo
+        { wch: 20 }, // Area
+        { wch: 30 }, // Descripcion
+        { wch: 10 }, // Talla
+        { wch: 10 }, // Unidad
+        { wch: 12 }, // Vida
+        { wch: 12 }, // Stock
+        { wch: 12 }, // Min
+        { wch: 20 }, // Resp
+        ...(valuationEnabled ? [{ wch: 15 }] : []) // Precio
+      ]
+
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }
+      ]
+
       XLSX.utils.book_append_sheet(wb, ws, 'Inventario_SST')
       XLSX.writeFile(wb, `Inventario_SST_${new Date().toISOString().split('T')[0]}.xlsx`)
-      notify.success('Exportación completada')
+      notify.success('Exportación completada con formato profesional')
     } catch (error) {
       console.error('Error exporting:', error)
       notify.error('Error al exportar inventario')
@@ -445,15 +527,15 @@ const InventoryPage = () => {
           </p>
         </div>
         <div className="flex gap-2 mt-4 sm:mt-0">
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls" />
           <button onClick={handleExport} className="btn btn-secondary btn-sm inline-flex items-center space-x-2">
             <Download className="w-4 h-4" /><span>Exportar</span>
           </button>
-          <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-sm inline-flex items-center space-x-2">
-            <Download className="w-4 h-4" /><span className="hidden sm:inline">Plantilla</span>
-          </button>
-          <button onClick={() => fileInputRef.current.click()} className="btn btn-secondary btn-sm inline-flex items-center space-x-2">
-            <Upload className="w-4 h-4" /><span>Carga Masiva</span>
+
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="btn btn-secondary btn-sm inline-flex items-center space-x-2 bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
+          >
+            <Upload className="w-4 h-4" /><span>Importar</span>
           </button>
           <button onClick={() => setShowModal(true)} className="btn btn-primary btn-sm inline-flex items-center space-x-2">
             <Plus className="w-4 h-4" /><span>Agregar Item</span>
@@ -1148,6 +1230,14 @@ const InventoryPage = () => {
         type={confirmDialog.type}
         confirmText="Sí, eliminar"
         cancelText="Cancelar"
+      />
+
+      <InventoryImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          fetchData()
+        }}
       />
     </div >
   )

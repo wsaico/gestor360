@@ -14,7 +14,8 @@ import {
   Trash2,
   UserPlus,
   ArrowRightLeft,
-  Ban
+  Ban,
+  Upload
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -30,6 +31,7 @@ import AssetAssignModal from '@/components/assets/AssetAssignModal'
 import AssetTransferModal from '@/components/assets/AssetTransferModal'
 import AssetDetailModal from '@/components/assets/AssetDetailModal'
 import DecommissionModal from '@/components/assets/DecommissionModal'
+import AssetsImportModal from '@/components/assets/AssetsImportModal'
 import SearchableSelect from '@/components/common/SearchableSelect'
 import {
   ASSET_CATEGORIES,
@@ -68,6 +70,7 @@ const AssetsPage = () => {
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showDecommissionModal, setShowDecommissionModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingAsset, setEditingAsset] = useState(null)
   const [selectedAsset, setSelectedAsset] = useState(null)
 
@@ -298,6 +301,13 @@ const AssetsPage = () => {
           >
             <Download className="w-4 h-4" />
             <span>Exportar</span>
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors shadow-sm"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Importar</span>
           </button>
           <button
             onClick={handleCreate}
@@ -745,6 +755,13 @@ const AssetsPage = () => {
         }}
         asset={selectedAsset}
         onConfirm={handleConfirmDecommission}
+      />
+
+      <AssetsImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleModalSuccess}
+        stationId={station?.id}
       />
     </div>
   )

@@ -120,6 +120,28 @@ class EppInventoryService {
   }
 
   /**
+   * Crea multiples items
+   * @param {Array} items
+   * @returns {Promise<Array>}
+   */
+  async createBulk(items) {
+    try {
+      const { data, error } = await supabase
+        .from('epp_items')
+        .insert(items)
+        .select()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error bulk creating EPP items:', error)
+      throw error
+    }
+  }
+
+
+
+  /**
    * Actualiza un item
    * @param {string} id - ID del item
    * @param {Object} itemData - Datos a actualizar

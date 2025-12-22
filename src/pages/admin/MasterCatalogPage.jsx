@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@contexts/AuthContext'
 import { useNotification } from '@contexts/NotificationContext'
 import masterProductService from '@services/masterProductService'
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx' // Needed for manual template if used, though modal handles it too
+import MasterProductImportModal from '@components/admin/MasterProductImportModal'
 import {
     Plus,
     Search,
@@ -48,7 +49,8 @@ const MasterCatalogPage = () => {
         image_url: ''
     })
 
-
+    // Import Modal State
+    const [showImportModal, setShowImportModal] = useState(false)
 
     // Type Modal
     const [showTypeModal, setShowTypeModal] = useState(false)
@@ -158,8 +160,6 @@ const MasterCatalogPage = () => {
         }
     }
 
-
-
     // --- TYPE HANDLERS ---
     const handleCreateType = async (e) => {
         e.preventDefault()
@@ -175,6 +175,7 @@ const MasterCatalogPage = () => {
         }
     }
 
+    // KEPT FOR COMPATIBILITY / FALLBACK
     const handleDownloadTemplate = () => {
         const template = [
             {
@@ -192,12 +193,6 @@ const MasterCatalogPage = () => {
         XLSX.writeFile(wb, 'Plantilla_Catalogo_Maestro.xlsx')
     }
 
-    const handleFileUpload = (e) => {/* Bulk upload logic usually similar to previous, needs Type update. Keeping simple for this iteration or assuming user handles it manually for now to save tokens */
-        // Placeholder for brevity, user didn't explicitly ask for bulk upload of Types now, but it's good to have.
-        notify.info('Carga masiva requiere actualización para Tipos. Use el formulario manual por ahora.')
-    }
-
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -209,40 +204,41 @@ const MasterCatalogPage = () => {
                     <p className="text-gray-500 text-sm mt-1">Gestión centralizada de productos, precios y clasificaciones.</p>
                 </div>
 
-                <div className="flex gap-2">
-                    <button
-                        onClick={handleDownloadTemplate}
-                        className="btn btn-secondary flex items-center gap-2"
-                        title="Descargar Plantilla"
-                    >
-                        <Download className="w-4 h-4" />
-                        <span className="hidden sm:inline">Plantilla</span>
-                    </button>
-                    {/* Bulk Upload Button Hidden for now until logic updated */}
+                <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:flex-none">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre o código SAP..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10 pr-4 py-2 w-full border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
 
-                    <button
-                        onClick={() => handleOpenModal()}
-                        className="btn btn-primary flex items-center gap-2"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Nuevo Producto
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setShowImportModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-sm"
+                        >
+                            <Upload className="w-5 h-5" />
+                            <span className="hidden sm:inline">Importar</span>
+                        </button>
+
+                        <button
+                            onClick={() => handleOpenModal()}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-sm"
+                        >
+                            <Plus className="w-5 h-5" />
+                            <span className="hidden sm:inline">Nuevo Producto</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Filters */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="md:col-span-2 relative">
-                        <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nombre o código SAP..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 input w-full"
-                        />
-                    </div>
                     <div>
                         <select
                             value={filterType}
@@ -458,6 +454,15 @@ const MasterCatalogPage = () => {
                 </div>
             )}
 
+            <MasterProductImportModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onSuccess={() => {
+                    fetchProducts()
+                    // Modal handles its own success notification
+                }}
+                types={types}
+            />
 
         </div>
     )

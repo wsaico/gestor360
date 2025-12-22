@@ -69,6 +69,8 @@ serve(async (req) => {
     }
 
     try {
+        console.log("Starting send-email-alerts function");
+
         // 1. Initialize Supabase Client
         const supabaseClient = createClient(
             Deno.env.get("SUPABASE_URL") ?? "",
@@ -87,6 +89,8 @@ serve(async (req) => {
         settingsData?.forEach(s => settingsMap.set(s.key, s.value));
         const getSetting = (key: string) => settingsMap.get(key);
         const isEnabled = (key: string) => getSetting(key) === "true";
+        console.log(`Settings loaded. Global Enabled: ${isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")}`);
+
 
         // GLOBAL CHECK
         if (!isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")) {
@@ -105,8 +109,73 @@ serve(async (req) => {
         }
 
         // Test Mode
-        let body = {};
+        let body: any = {};
         try { body = await req.json(); } catch (e) { }
+
+        // --- WEBHOOK MODE (Real-time Stock) ---
+        if (body.record && body.type === 'UPDATE' && body.table === 'epp_items') {
+            console.log("--> Webhook Triggered: Stock Update");
+
+            if (!isEnabled("ENABLE_ALERT_LOW_STOCK")) {
+                console.log("Low Stock Alerts disabled in settings. Skipping.");
+                return new Response(JSON.stringify({ message: "Disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            const item = body.record;
+            // Double check condition (redundant but safe)
+            if (item.stock_current <= item.stock_min) {
+                console.log(`Processing Critical Stock Alert for item: ${item.name}`);
+
+                // Find Supervisors for this station
+                const { data: supervisors } = await supabaseClient
+                    .from("system_users")
+                    .select("email, first_name")
+                    .eq("station_id", item.station_id)
+                    .in("role", ["SUPERVISOR", "ADMIN"]);
+
+                if (supervisors && supervisors.length > 0) {
+                    const html = generateEmailTemplate(
+                        "⚠️ Alerta de Stock Crítico",
+                        `<p>El siguiente ítem ha alcanzado el nivel mínimo de inventario.</p>
+                         <div class="alert-group">
+                            <h3>STOCK CRÍTICO</h3>
+                            <ul class="alert-list">
+                                <li class="alert-item">
+                                    <span class="main-text">${item.name}</span>
+                                    <span class="meta-text urgent">Stock: ${item.stock_current} (Min: ${item.stock_min})</span>
+                                </li>
+                            </ul>
+                         </div>
+                         <p>Por favor, gestiorne la reposición lo antes posible.</p>`,
+                        settingsMap
+                    );
+
+                    for (const recipient of supervisors) {
+                        if (!recipient.email) continue;
+                        await fetch("https://api.brevo.com/v3/smtp/email", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "api-key": brevoKey },
+                            body: JSON.stringify({
+                                sender: { email: senderEmail, name: "Gestor360 Alertas" },
+                                to: [{ email: recipient.email, name: recipient.first_name }],
+                                subject: `[Gestor360] ⚠️ Stock Crítico: ${item.name}`,
+                                htmlContent: html,
+                            }),
+                        });
+                    }
+                    console.log(`Alert sent to ${supervisors.length} supervisors.`);
+                } else {
+                    console.log("No supervisors found for this station.");
+                }
+            } else {
+                console.log("Stock is above minimum. No alert needed.");
+            }
+
+            return new Response(JSON.stringify({ success: true, mode: 'webhook' }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // --- EXISTING ACTIONS ---
+
 
         if (body.action === 'test_connection') {
             const targetEmail = body.email;
@@ -197,7 +266,8 @@ serve(async (req) => {
                 .eq("is_active", true);
 
             if (allItems) {
-                const lowStock = allItems.filter(i => i.stock_current < i.stock_min);
+                const lowStock = allItems.filter(i => i.stock_current <= i.stock_min);
+                console.log(`Found ${lowStock.length} low stock items out of ${allItems.length} total active items.`);
                 allAlerts.push(...lowStock.map(i => ({
                     station_id: i.station_id,
                     type: 'STOCK CRÍTICO',
@@ -206,6 +276,7 @@ serve(async (req) => {
                     urgent: true
                 })));
             }
+
         }
 
         // --- C. Birthdays ---
@@ -287,6 +358,8 @@ serve(async (req) => {
             if (!stations[sId]) stations[sId] = [];
             stations[sId].push(alert);
         });
+        console.log(`Processing ${allAlerts.length} total alerts across ${Object.keys(stations).length} stations.`);
+
 
         const results = [];
 

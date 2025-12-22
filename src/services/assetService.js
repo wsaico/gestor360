@@ -103,6 +103,28 @@ class AssetService {
   }
 
   /**
+   * Crea múltiples activos
+   * @param {Array} items - Lista de activos a crear
+   * @returns {Promise<Array>} - Activos creados
+   */
+  async createBulk(items) {
+    try {
+      if (!items || items.length === 0) return []
+
+      const { data, error } = await supabase
+        .from('assets')
+        .insert(items)
+        .select()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error bulk creating assets:', error)
+      throw new Error(error.message || 'Error al crear activos masivamente')
+    }
+  }
+
+  /**
    * Obtiene un activo por código
    * @param {string} assetCode - Código del activo
    * @returns {Promise<Object|null>} - Datos del activo o null

@@ -336,9 +336,9 @@ const PublicMenuPage = () => {
                     costUser = fullPrice
                     subsidyCompany = 0
                 } else if (employee.visitor_discount_type === 'COURTESY') {
-                    // Courtesy (Company pays full)
+                    // Courtesy (Just a record, no monetary value in this system flow)
                     costUser = 0
-                    subsidyCompany = fullPrice
+                    subsidyCompany = 0
                 }
                 // 'STANDARD' is default (costUser = employee_cost)
             }
@@ -436,7 +436,18 @@ const PublicMenuPage = () => {
     }, [selectedMenu, parsedMenuOptions, selections])
 
 
-    const displayedPrice = pricing ? Number(pricing.employee_cost).toFixed(2) : '0.00'
+    const displayedPrice = useMemo(() => {
+        if (!pricing) return '0.00'
+        let cost = Number(pricing.employee_cost)
+
+        if (employee?.visitor_discount_type) {
+            const fullPrice = Number(pricing.employee_cost) + Number(pricing.company_subsidy)
+            if (employee.visitor_discount_type === 'COURTESY') return '0.00'
+            if (employee.visitor_discount_type === 'NONE') return fullPrice.toFixed(2)
+        }
+
+        return cost.toFixed(2)
+    }, [pricing, employee])
     const displayName = useMemo(() => {
         if (employee?.full_name) {
             const names = employee.full_name.split(' ')
@@ -776,7 +787,7 @@ const PublicMenuPage = () => {
                                     />
                                 </div>
 
-                                {pricing && (
+                                {pricing && employee?.visitor_discount_type !== 'COURTESY' && (
                                     <div className="mb-3 bg-blue-50/50 p-2 rounded-lg border border-blue-100">
                                         <div className="flex justify-between items-center text-xs mb-1">
                                             <span className="text-blue-400">La empresa asume:</span>
@@ -792,6 +803,12 @@ const PublicMenuPage = () => {
                                                 S/ {displayedPrice}
                                             </span>
                                         </div>
+                                    </div>
+                                )}
+                                {pricing && employee?.visitor_discount_type === 'COURTESY' && (
+                                    <div className="mb-3 bg-green-50 p-3 rounded-lg border border-green-100 flex justify-between items-center">
+                                        <span className="text-green-700 font-bold">Cortesía / Visita</span>
+                                        <span className="font-black text-green-700 text-lg">S/ 0.00</span>
                                     </div>
                                 )}
                                 {!pricing && (
@@ -852,7 +869,7 @@ const PublicMenuPage = () => {
                                     </div>
                                 )}
 
-                                {pricing ? (
+                                {pricing && employee?.visitor_discount_type !== 'COURTESY' ? (
                                     <div className="pt-4 border-t border-gray-200 space-y-1">
                                         <div className="flex justify-between items-center text-xs text-blue-500 bg-blue-50 p-1 px-2 rounded">
                                             <span>♥️ La empresa cubre:</span>
@@ -864,6 +881,13 @@ const PublicMenuPage = () => {
                                                 S/ {displayedPrice}
                                             </span>
                                         </div>
+                                    </div>
+                                ) : employee?.visitor_discount_type === 'COURTESY' ? (
+                                    <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
+                                        <span className="text-gray-600 font-bold">Total a Pagar</span>
+                                        <span className="text-green-600 font-bold text-xl">
+                                            S/ 0.00 (Cortesía)
+                                        </span>
                                     </div>
                                 ) : (
                                     <div className="flex justify-between border-t border-gray-200 pt-4">
