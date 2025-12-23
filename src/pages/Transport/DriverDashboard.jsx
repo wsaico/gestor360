@@ -25,7 +25,7 @@ import Swal from 'sweetalert2'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 
 // Fix Leaflet Default Icon in Vite/Webpack
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -172,32 +172,98 @@ const DriverSelector = ({ onSelect, providerId }) => {
 }
 
 const CameraScannerModal = ({ onClose, onScan, darkMode }) => {
-    useEffect(() => {
-        const scanner = new Html5QrcodeScanner(
-            "reader",
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            false
-        );
+    const [scannerError, setScannerError] = useState(null)
 
-        scanner.render((decodedText) => {
-            onScan(decodedText);
-        }, (error) => {
-            // Scanning errors are common while positioning, ignoring.
-        });
+    useEffect(() => {
+        const scannerId = "reader"
+        const html5QrCode = new Html5Qrcode(scannerId)
+
+        const startScanner = async () => {
+            try {
+                // Configuración optimizada para móviles
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                }
+
+                // Iniciar escaneo forzando cámara trasera
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        onScan(decodedText)
+                    },
+                    (errorMessage) => {
+                        // Errores de escaneo comunes mientras se posiciona, solo loguear si es crítico
+                    }
+                )
+            } catch (err) {
+                console.error("Error al iniciar el escáner:", err)
+                let msg = "Error al acceder a la cámara"
+                if (err.name === 'NotAllowedError') msg = "Permiso de cámara denegado"
+                if (err.name === 'NotFoundError') msg = "No se encontró ninguna cámara"
+                setScannerError(msg)
+            }
+        }
+
+        // Pequeño delay para asegurar que el div 'reader' esté montado
+        const timer = setTimeout(startScanner, 300)
 
         return () => {
-            scanner.clear().catch(error => console.error("Failed to clear html5-qrcode scanner. ", error));
-        };
-    }, [onScan]);
+            clearTimeout(timer)
+            if (html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear()
+                }).catch(e => console.error("Error al detener el escáner:", e))
+            }
+        }
+    }, [onScan])
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
-            <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-white/20 rounded-full text-white z-50">
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md">
+            <button
+                onClick={onClose}
+                className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white z-50 transition-colors active:scale-90"
+            >
                 <X className="w-8 h-8" />
             </button>
-            <h2 className="text-white text-xl font-bold mb-4">Escaneando Fotocheck...</h2>
-            <div id="reader" className="w-full max-w-sm bg-white rounded-lg overflow-hidden shadow-2xl"></div>
-            <p className="text-gray-400 mt-4 text-center text-sm">Apunte la cámara al código de barras o QR del pasajero.</p>
+
+            <div className="text-center mb-8 relative">
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-primary-500/20 rounded-full blur-2xl animate-pulse"></div>
+                <h2 className="text-white text-2xl font-bold mb-2">Escaneando Fotocheck...</h2>
+                <p className="text-gray-400 text-sm max-w-xs mx-auto">
+                    Apunte la cámara al código de barras o QR para registrar el pasajero automáticamente.
+                </p>
+            </div>
+
+            <div className="relative w-full max-w-sm aspect-square bg-slate-800 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] border-4 border-slate-700/50">
+                <div id="reader" className="w-full h-full"></div>
+
+                {/* Overlay decorativo de escaneo */}
+                <div className="absolute inset-0 border-2 border-primary-500/30 rounded-[inherit] pointer-events-none">
+                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-primary-500/50 shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-scan"></div>
+                </div>
+
+                {scannerError && (
+                    <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center">
+                        <Camera className="w-12 h-12 text-red-500 mb-4 opacity-50" />
+                        <p className="text-red-400 font-bold mb-4">{scannerError}</p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold active:scale-95"
+                        >
+                            Reintentar
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            <div className="mt-12 flex items-center gap-4 text-gray-500 text-xs font-bold uppercase tracking-[0.2em]">
+                <div className="w-8 h-px bg-gray-700"></div>
+                <span>Posicione el código al centro</span>
+                <div className="w-8 h-px bg-gray-700"></div>
+            </div>
         </div>
     )
 }
