@@ -52,24 +52,34 @@ const MapView = ({ location, destination }) => {
     const RecenterMap = ({ lat, lng }) => {
         const map = useMap();
         useEffect(() => {
-            map.setView([lat, lng], map.getZoom());
+            if (lat && lng) {
+                map.setView([lat, lng], map.getZoom());
+            }
         }, [lat, lng, map]);
         return null;
     }
 
-    if (!location) return <div className="h-full w-full flex items-center justify-center bg-gray-100 dark:bg-slate-800 text-gray-400">Esperando GPS...</div>
+    // Default to Jauja / Aeropuerto area if location is practically null
+    const displayLoc = location || { lat: -11.7752, lng: -75.4983 }
 
     return (
-        <MapContainer center={[location.lat, location.lng]} zoom={15} style={{ height: '100%', width: '100%', zIndex: 0 }} ref={mapRef}>
-            <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <Marker position={[location.lat, location.lng]}>
-                <Popup>Tu Ubicación</Popup>
-            </Marker>
-            <RecenterMap lat={location.lat} lng={location.lng} />
-        </MapContainer>
+        <div className="h-full w-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
+            <MapContainer
+                center={[displayLoc.lat, displayLoc.lng]}
+                zoom={15}
+                style={{ height: '100%', width: '100%', zIndex: 0 }}
+                ref={mapRef}
+            >
+                <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Marker position={[displayLoc.lat, displayLoc.lng]}>
+                    <Popup>{location ? "Tu Ubicación" : "Ubicación Estimada (Esperando GPS...)"}</Popup>
+                </Marker>
+                <RecenterMap lat={displayLoc.lat} lng={displayLoc.lng} />
+            </MapContainer>
+        </div>
     )
 }
 
@@ -574,12 +584,24 @@ const DriverDashboard = () => {
     const restoreSession = async (schedule) => {
         setActiveSchedule(schedule)
         setViewMode('active')
-        // Load Pax
-        if (schedule.passengers_manifest?.length) {
-            try {
-                const paxData = await Promise.all(schedule.passengers_manifest.map(id => employeeService.getById(id)))
-                setPassengers(paxData)
-            } catch (e) { console.error(e) }
+        // Load Pax using RPC (Safe for drivers)
+        try {
+            const rawData = await transportService.getPassengersForSchedule(schedule.id)
+            // Map RPC pax_id back to id for UI compatibility
+            const paxData = rawData.map(p => ({ ...p, id: p.pax_id }))
+            setPassengers(paxData)
+        } catch (e) {
+            console.error("Error loading passengers via RPC:", e)
+            // Fallback to manual manifest fetch if RPC fails
+            if (schedule.passengers_manifest?.length) {
+                try {
+                    const results = await Promise.allSettled(schedule.passengers_manifest.map(id => employeeService.getById(id)))
+                    const validPax = results
+                        .filter(r => r.status === 'fulfilled' && r.value)
+                        .map(r => r.value)
+                    setPassengers(validPax)
+                } catch (e2) { console.error("Critical manifest failure:", e2) }
+            }
         }
         startGpsTracking(schedule.execution.id)
     }
@@ -606,8 +628,13 @@ const DriverDashboard = () => {
                     lastServerUpdate.current = now
                 }
             },
-            (err) => console.error(err),
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+            (err) => {
+                // Silenciar timeout errors en desarrollo (localhost no siempre tiene GPS)
+                if (err.code !== 3) { // 3 = TIMEOUT
+                    console.warn('GPS Error:', err.message)
+                }
+            },
+            { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
         )
     }
 
@@ -654,10 +681,12 @@ const DriverDashboard = () => {
                 setActiveSchedule(updatedSchedule)
                 setViewMode('active')
 
-                // Load Pax
-                if (updatedSchedule.passengers_manifest?.length) {
-                    const paxData = await Promise.all(updatedSchedule.passengers_manifest.map(id => employeeService.getById(id)))
+                // Load Pax via RPC
+                try {
+                    const paxData = await transportService.getPassengersForSchedule(updatedSchedule.id)
                     setPassengers(paxData)
+                } catch (e) {
+                    console.error("Error fetching passengers on start:", e)
                 }
 
                 startGpsTracking(execution.id)
@@ -1007,7 +1036,12 @@ const DriverDashboard = () => {
                                 </div>
 
                                 {viewMode === 'map' ? (
-                                    <MapView location={currentLocation} destination={null} />
+                                    <div className="h-full w-full min-h-[400px]">
+                                        <MapView
+                                            location={currentLocation || { lat: -11.775, lng: -75.500 }} // Fallback to Jauja area if null
+                                            destination={null}
+                                        />
+                                    </div>
                                 ) : (
                                     <div className="h-full flex flex-col">
                                         <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-3 px-2 pt-2">Manifiesto de Pasajeros</h3>

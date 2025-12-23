@@ -333,6 +333,19 @@ class TransportService {
         }
     }
 
+    async getPassengersForSchedule(scheduleId) {
+        try {
+            const { data, error } = await supabase.rpc('get_passengers_for_schedule', {
+                p_schedule_id: scheduleId
+            })
+            if (error) throw error
+            return data || []
+        } catch (error) {
+            console.error('Error fetching passengers for schedule:', error)
+            throw error
+        }
+    }
+
     async deleteDriver(id) {
         try {
             const { error } = await supabase.from('transport_drivers').delete().eq('id', id)

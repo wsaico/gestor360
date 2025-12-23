@@ -4,6 +4,11 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Fix for xlsx-js-style stream error
+    'process.env': {},
+    global: 'window',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
