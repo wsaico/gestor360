@@ -19,7 +19,7 @@ export default function StationDashboard() {
             try {
                 setLoading(true)
                 const [annData, alertData] = await Promise.all([
-                    announcementService.getPublicAnnouncements(stationId),
+                    announcementService.getPublicAnnouncements(stationId, 'BOARD'),
                     publicDashboardService.getStationAlerts(stationId)
                 ])
                 setAnnouncements(annData || [])

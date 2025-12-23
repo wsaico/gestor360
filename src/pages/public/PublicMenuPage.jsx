@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
     UtensilsCrossed, Coffee, Sun, Moon, Check, AlertCircle,
     ChevronRight, User, MapPin, CheckCircle2,
-    ArrowRight, MessageSquare, Clock, Utensils, AlertTriangle, History, X // Added History, X
+    ArrowRight, MessageSquare, Clock, Utensils, AlertTriangle, History, X, Filter, ShoppingBag
 } from 'lucide-react'
 import menuService from '@services/menuService'
 import employeeService from '@services/employeeService'
@@ -11,8 +11,9 @@ import foodOrderService from '@services/foodOrderService'
 import pricingService from '@services/pricingService'
 import stationService from '@services/stationService' // Added station service
 import AnnouncementModal from '../../components/AnnouncementModal' // Import Modal
+import ConfirmDialog from '../../components/ConfirmDialog' // Import Confirm Dialog
 import { announcementService } from '../../services/announcementService' // Import Service
-import { MEAL_TYPES, MEAL_TYPE_LABELS, ORDER_TYPES } from '@utils/constants'
+import { MEAL_TYPES, MEAL_TYPE_LABELS, ORDER_TYPES, DINING_OPTIONS, DINING_OPTION_LABELS } from '@utils/constants'
 import { formatDate } from '@utils/helpers'
 
 const STEPS = {
@@ -39,6 +40,14 @@ const PublicMenuPage = () => {
     // History State
     const [showHistory, setShowHistory] = useState(false)
     const [historyOrders, setHistoryOrders] = useState([])
+    const [historyFilter, setHistoryFilter] = useState('payroll_period') // 'payroll_period' | 'custom' | 'last_50'
+    const [customStartDate, setCustomStartDate] = useState('')
+    const [customEndDate, setCustomEndDate] = useState('')
+    const [showFilters, setShowFilters] = useState(false) // Collapsible filters
+
+    // Confirmation Dialog State
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+    const [confirmDialogData, setConfirmDialogData] = useState({ dateText: '', mealTypeText: '', selectedOptions: '' })
 
     const [station, setStation] = useState(null) // Separate station state
     const [menus, setMenus] = useState([])
@@ -58,6 +67,13 @@ const PublicMenuPage = () => {
         }
     }, [currentStep, autoOpenHistory, employee])
 
+    // Reload history when filter changes
+    useEffect(() => {
+        if (showHistory && employee) {
+            loadHistory()
+        }
+    }, [historyFilter, customStartDate, customEndDate])
+
     // Selection State
     const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]) // Today
     const [selectedMenu, setSelectedMenu] = useState(null)
@@ -66,7 +82,25 @@ const PublicMenuPage = () => {
 
     const [orderType] = useState(ORDER_TYPES.NORMAL)
     const [discountPercent] = useState(0)
-    const [orderSuccess, setOrderSuccess] = useState(false)
+    const [orderSuccess] = useState(false)
+    const [diningOption, setDiningOption] = useState(null) // Dining option state - null until user selects
+    const [showSuggestions, setShowSuggestions] = useState(false) // Collapsible suggestions
+
+    // Auto-select tomorrow if no menus for today (intelligent fallback)
+    useEffect(() => {
+        if (menus.length > 0 && filterDate === new Date().toISOString().split('T')[0]) {
+            const todayMenus = menus.filter(m => m.serve_date === filterDate)
+            if (todayMenus.length === 0) {
+                // No menus for today, check if there are menus for tomorrow
+                const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+                const tomorrowMenus = menus.filter(m => m.serve_date === tomorrow)
+                if (tomorrowMenus.length > 0) {
+                    console.log('No menus for today, auto-selecting tomorrow')
+                    setFilterDate(tomorrow)
+                }
+            }
+        }
+    }, [menus, filterDate])
 
     // Helpers
     const getMealColor = (type) => {
@@ -85,6 +119,45 @@ const PublicMenuPage = () => {
             case MEAL_TYPES.DINNER: return <Moon className="w-4 h-4" />
             default: return <UtensilsCrossed className="w-4 h-4" />
         }
+    }
+
+    const getPayrollPeriod = () => {
+        const today = new Date()
+        const currentDay = today.getDate()
+
+        let startDate, endDate
+
+        if (currentDay >= 16) {
+            // Segunda quincena: del 16 de este mes al 15 del próximo
+            startDate = new Date(today.getFullYear(), today.getMonth(), 16)
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 15)
+        } else {
+            // Primera quincena: del 16 del mes pasado al 15 de este mes
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 16)
+            endDate = new Date(today.getFullYear(), today.getMonth(), 15)
+        }
+
+        return {
+            start: startDate.toISOString().split('T')[0],
+            end: endDate.toISOString().split('T')[0],
+            label: `${startDate.getDate()}/${startDate.toLocaleString('es', { month: 'short' })} - ${endDate.getDate()}/${endDate.toLocaleString('es', { month: 'short' })}`
+        }
+    }
+
+    const getDynamicDateText = (dateString) => {
+        const today = new Date().toISOString().split('T')[0]
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+
+        if (dateString === today) return 'hoy'
+        if (dateString === tomorrow) return 'mañana'
+
+        // Return formatted date
+        const date = new Date(dateString + 'T00:00:00')
+        return date.toLocaleDateString('es-ES', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long'
+        })
     }
 
     // Handlers
@@ -196,7 +269,7 @@ const PublicMenuPage = () => {
 
             // 4. Load Station Announcements
             try {
-                const news = await announcementService.getActive(stId)
+                const news = await announcementService.getPublicAnnouncements(stId, 'FOOD_KIOSK')
                 setAnnouncements(news)
                 // Modal will auto-show based on its internal Smart Logic (localStorage check)
                 // But we must render it.
@@ -216,10 +289,23 @@ const PublicMenuPage = () => {
     const loadHistory = async () => {
         if (!employee) return
         try {
-            // Don't set main loading to avoid full screen block, just local logic if needed
-            // But main loading is fine for modal trigger
             setLoading(true)
-            const history = await foodOrderService.getPublicHistory(employee.id || employee.employee_id)
+
+            // Build options based on filter type
+            let options = {}
+
+            if (historyFilter === 'payroll_period') {
+                options.currentPayrollPeriod = true
+            } else if (historyFilter === 'custom') {
+                if (customStartDate) options.startDate = customStartDate
+                if (customEndDate) options.endDate = customEndDate
+            }
+            // If 'last_50', no options needed (default behavior)
+
+            const history = await foodOrderService.getPublicHistory(
+                employee.id || employee.employee_id,
+                options
+            )
             setHistoryOrders(history)
             setShowHistory(true)
         } catch (error) {
@@ -384,10 +470,39 @@ const PublicMenuPage = () => {
                 employee_cost_snapshot: finalEmployeeCost,
                 company_subsidy_snapshot: finalCompanySubsidy,
                 status: 'PENDING',
-                notes: suggestions
+                notes: suggestions,
+                dining_option: diningOption
             }
 
-            await foodOrderService.create(orderData)
+            // Show confirmation dialog with dynamic date
+            const dateText = getDynamicDateText(selectedMenu.serve_date)
+            const mealTypeText = selectedMenu.meal_type === MEAL_TYPES.BREAKFAST ? 'desayuno' :
+                selectedMenu.meal_type === MEAL_TYPES.LUNCH ? 'almuerzo' : 'cena'
+
+            // Store data and show dialog
+            setConfirmDialogData({
+                dateText,
+                mealTypeText,
+                selectedOptions: selectedOptionString,
+                diningOption,
+                orderData
+            })
+            setShowConfirmDialog(true)
+            setLoading(false)
+
+        } catch (err) {
+            console.error(err)
+            setError('Error al preparar el pedido: ' + (err.message || 'Error desconocido'))
+            setLoading(false)
+        }
+    }
+
+    const handleConfirmOrder = async () => {
+        setShowConfirmDialog(false)
+        setLoading(true)
+
+        try {
+            await foodOrderService.create(confirmDialogData.orderData)
             setOrderSuccess(true)
             setCurrentStep(STEPS.CONFIRMATION)
 
@@ -420,6 +535,7 @@ const PublicMenuPage = () => {
         setSelections({})
         setSuggestions('')
         setExistingOrder(null)
+        setDiningOption(null) // Reset dining option to null
     }
 
     const handleSelection = (sectionTitle, item) => {
@@ -432,8 +548,9 @@ const PublicMenuPage = () => {
     const isReadyToOrder = useMemo(() => {
         if (!selectedMenu) return false
         if (parsedMenuOptions.length === 0) return false
+        if (!diningOption) return false // Must select dining option
         return parsedMenuOptions.every(section => !!selections[section.title])
-    }, [selectedMenu, parsedMenuOptions, selections])
+    }, [selectedMenu, parsedMenuOptions, selections, diningOption])
 
 
     const displayedPrice = useMemo(() => {
@@ -774,18 +891,43 @@ const PublicMenuPage = () => {
                                 animate={{ y: 0 }}
                                 className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 max-w-md mx-auto"
                             >
-                                <div className="mb-4">
-                                    <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
-                                        <MessageSquare className="w-3 h-3" />
-                                        <span>Sugerencias / Comentarios</span>
-                                    </label>
-                                    <textarea
-                                        value={suggestions}
-                                        onChange={(e) => setSuggestions(e.target.value)}
-                                        placeholder="Ej: Sin cebolla, extra arroz..."
-                                        className="w-full text-sm p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none resize-none h-16"
-                                    />
-                                </div>
+                                {/* Suggestions - Collapsible */}
+                                {!showSuggestions ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSuggestions(true)}
+                                        className="mb-3 w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 py-2 px-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 hover:border-primary-400 transition-all"
+                                    >
+                                        <MessageSquare className="w-4 h-4" />
+                                        <span>Agregar sugerencias (opcional)</span>
+                                    </button>
+                                ) : (
+                                    <div className="mb-3">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
+                                                <MessageSquare className="w-3 h-3" />
+                                                <span>Sugerencias / Comentarios</span>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowSuggestions(false)
+                                                    setSuggestions('')
+                                                }}
+                                                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        <textarea
+                                            value={suggestions}
+                                            onChange={(e) => setSuggestions(e.target.value)}
+                                            placeholder="Ej: Sin cebolla, extra arroz..."
+                                            className="w-full text-sm p-3 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none resize-none h-20"
+                                            autoFocus
+                                        />
+                                    </div>
+                                )}
 
                                 {pricing && employee?.visitor_discount_type !== 'COURTESY' && (
                                     <div className="mb-3 bg-blue-50/50 p-2 rounded-lg border border-blue-100">
@@ -819,6 +961,61 @@ const PublicMenuPage = () => {
                                         </span>
                                     </div>
                                 )}
+
+                                {/* Dining Option Selector */}
+                                <div className={`mb-4 p-4 rounded-xl border-2 transition-all ${!diningOption ? 'border-orange-300 bg-orange-50/50 dark:bg-orange-900/10' : 'border-transparent'
+                                    }`}>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        ¿Dónde consumirás tu pedido? <span className="text-orange-600">*</span>
+                                    </label>
+                                    {!diningOption && (
+                                        <p className="text-xs text-orange-600 dark:text-orange-400 mb-3">
+                                            Por favor selecciona una opción
+                                        </p>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDiningOption(DINING_OPTIONS.DINE_IN)}
+                                            className={`p-4 rounded-xl border-2 transition-all ${diningOption === DINING_OPTIONS.DINE_IN
+                                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md'
+                                                : 'border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-600'
+                                                }`}
+                                        >
+                                            <UtensilsCrossed className={`w-6 h-6 mx-auto mb-2 ${diningOption === DINING_OPTIONS.DINE_IN
+                                                ? 'text-primary-600 dark:text-primary-400'
+                                                : 'text-gray-400'
+                                                }`} />
+                                            <span className={`block font-medium text-sm ${diningOption === DINING_OPTIONS.DINE_IN
+                                                ? 'text-primary-700 dark:text-primary-300'
+                                                : 'text-gray-600 dark:text-gray-400'
+                                                }`}>
+                                                En restaurante
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setDiningOption(DINING_OPTIONS.TAKEAWAY)}
+                                            className={`p-4 rounded-xl border-2 transition-all ${diningOption === DINING_OPTIONS.TAKEAWAY
+                                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md'
+                                                : 'border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-600'
+                                                }`}
+                                        >
+                                            <ShoppingBag className={`w-6 h-6 mx-auto mb-2 ${diningOption === DINING_OPTIONS.TAKEAWAY
+                                                ? 'text-primary-600 dark:text-primary-400'
+                                                : 'text-gray-400'
+                                                }`} />
+                                            <span className={`block font-medium text-sm ${diningOption === DINING_OPTIONS.TAKEAWAY
+                                                ? 'text-primary-700 dark:text-primary-300'
+                                                : 'text-gray-600 dark:text-gray-400'
+                                                }`}>
+                                                Para llevar
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <button
                                     onClick={handleOrderSubmit}
                                     disabled={!isReadyToOrder || loading}
@@ -944,21 +1141,93 @@ const PublicMenuPage = () => {
                             className="bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] md:max-h-[80vh]"
                             onClick={e => e.stopPropagation()}
                         >
-                            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                                 <div>
                                     <h2 className="text-xl font-bold text-gray-800">Mis Pedidos</h2>
-                                    <p className="text-xs text-gray-500">Historial reciente</p>
+                                    <p className="text-xs text-gray-500">
+                                        {historyFilter === 'payroll_period' && `Período: ${getPayrollPeriod().label}`}
+                                        {historyFilter === 'custom' && 'Fechas personalizadas'}
+                                        {historyFilter === 'last_50' && 'Últimos 50 pedidos'}
+                                    </p>
                                 </div>
-                                <button
-                                    onClick={() => setShowHistory(false)}
-                                    className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-                                >
-                                    <X size={20} className="text-gray-500" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                                        title="Filtros"
+                                    >
+                                        <Filter size={18} className="text-gray-600" />
+                                    </button>
+                                    <button
+                                        onClick={() => setShowHistory(false)}
+                                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                                    >
+                                        <X size={20} className="text-gray-500" />
+                                    </button>
+                                </div>
                             </div>
 
+                            {/* Filter Tabs - Collapsible */}
+                            {showFilters && (
+                                <div className="p-3 bg-white border-b border-gray-100">
+                                    <div className="flex gap-2 mb-2">
+                                        <button
+                                            onClick={() => setHistoryFilter('payroll_period')}
+                                            className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${historyFilter === 'payroll_period'
+                                                ? 'bg-primary-600 text-white shadow-md'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            Período Planilla
+                                        </button>
+                                        <button
+                                            onClick={() => setHistoryFilter('custom')}
+                                            className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${historyFilter === 'custom'
+                                                ? 'bg-primary-600 text-white shadow-md'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            Personalizado
+                                        </button>
+                                        <button
+                                            onClick={() => setHistoryFilter('last_50')}
+                                            className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all ${historyFilter === 'last_50'
+                                                ? 'bg-primary-600 text-white shadow-md'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            Últimos 50
+                                        </button>
+                                    </div>
+
+                                    {/* Custom Date Inputs */}
+                                    {historyFilter === 'custom' && (
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Desde</label>
+                                                <input
+                                                    type="date"
+                                                    value={customStartDate}
+                                                    onChange={(e) => setCustomStartDate(e.target.value)}
+                                                    className="w-full text-xs p-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Hasta</label>
+                                                <input
+                                                    type="date"
+                                                    value={customEndDate}
+                                                    onChange={(e) => setCustomEndDate(e.target.value)}
+                                                    className="w-full text-xs p-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Resumen Mensual con Diseño Mejorado */}
-                            <div className="bg-gradient-to-br from-primary-600 to-primary-800 p-6 text-white text-center rounded-none sm:rounded-none relative overflow-hidden">
+                            <div className="bg-gradient-to-br from-primary-600 to-primary-800 p-3 text-white text-center rounded-none sm:rounded-none relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
                                     <div className="absolute top-10 right-10 w-32 h-32 bg-white rounded-full blur-3xl"></div>
                                     <div className="absolute bottom-10 left-10 w-24 h-24 bg-white rounded-full blur-2xl"></div>
@@ -1032,6 +1301,11 @@ const PublicMenuPage = () => {
                                                     <span className="text-[10px] font-bold tracking-wider text-gray-400 uppercase bg-gray-50 px-1.5 py-0.5 rounded">
                                                         {MEAL_TYPE_LABELS[order.meal_type]}
                                                     </span>
+                                                    {order.order_type === 'MANUAL' && (
+                                                        <span className="text-[9px] font-bold tracking-wider text-purple-700 uppercase bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                                            MANUAL
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${order.status === 'CONFIRMED' ? 'bg-green-50 text-green-700' :
                                                     order.status === 'CONSUMED' ? 'bg-blue-50 text-blue-700' :
@@ -1066,6 +1340,45 @@ const PublicMenuPage = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={showConfirmDialog}
+                title={`Confirmar pedido de ${confirmDialogData.mealTypeText}`}
+                message={
+                    <div className="space-y-3">
+                        <p className="text-base">
+                            ¿Deseas confirmar tu pedido para{' '}
+                            <span className={`font-bold text-lg ${confirmDialogData.dateText === 'hoy' ? 'text-green-600 dark:text-green-400' :
+                                confirmDialogData.dateText === 'mañana' ? 'text-blue-600 dark:text-blue-400' :
+                                    'text-primary-600 dark:text-primary-400'
+                                }`}>
+                                {confirmDialogData.dateText}
+                            </span>?
+                        </p>
+                        <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                {confirmDialogData.selectedOptions}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                {confirmDialogData.diningOption === DINING_OPTIONS.DINE_IN ? (
+                                    <UtensilsCrossed className="w-3.5 h-3.5 text-gray-500" />
+                                ) : (
+                                    <ShoppingBag className="w-3.5 h-3.5 text-gray-500" />
+                                )}
+                                <span className="text-xs text-gray-500">
+                                    {DINING_OPTION_LABELS[confirmDialogData.diningOption]}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                }
+                confirmText="Sí, confirmar"
+                cancelText="Cancelar"
+                onConfirm={handleConfirmOrder}
+                onCancel={() => setShowConfirmDialog(false)}
+                type="info"
+            />
 
         </div >
     )

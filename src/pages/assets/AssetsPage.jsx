@@ -45,7 +45,7 @@ import {
 import { formatCurrency, formatDate, calculateTotalAssetValue } from '@/utils/helpers'
 
 const AssetsPage = () => {
-  const { station, user } = useAuth()
+  const { station, user, getEffectiveStationId } = useAuth()
   const { notify } = useNotification()
 
   // Estado
@@ -54,6 +54,7 @@ const AssetsPage = () => {
   const [organizations, setOrganizations] = useState([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState(ASSET_VIEW_MODES.LIST)
+  const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // For Global Admin station selection
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('')
@@ -81,12 +82,20 @@ const AssetsPage = () => {
     }
   }, [station?.id])
 
+  // Sync selectedStationId when station changes in header (Global Admin selects station)
+  useEffect(() => {
+    if (station?.id && station.id !== selectedStationId) {
+      setSelectedStationId(station.id)
+    }
+  }, [station?.id])
+
   const fetchData = async () => {
     try {
       setLoading(true)
+      const targetStationId = getEffectiveStationId(selectedStationId)
       const [assetsData, areasData, orgsData] = await Promise.all([
-        assetService.getAll(station.id),
-        areaService.getAll(station.id, true),
+        assetService.getAll(targetStationId),
+        areaService.getAll(targetStationId, true),
         organizationService.getAll(true)
       ])
 

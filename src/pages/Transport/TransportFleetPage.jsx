@@ -42,8 +42,8 @@ const TransportFleetPage = () => {
         setLoading(true)
         try {
             const filters = {
-                providerId: isProvider ? user.id : undefined,
-                stationId: station?.id
+                providerId: isProvider ? user.id : undefined
+                // Note: stationId removed - drivers/vehicles are associated with providers, not stations
             }
 
             if (activeTab === 'drivers') {
@@ -65,8 +65,8 @@ const TransportFleetPage = () => {
         try {
             const payload = {
                 ...formData,
-                provider_id: isProvider ? user.id : formData.provider_id,
-                station_id: formData.station_id || station?.id
+                provider_id: isProvider ? user.id : formData.provider_id
+                // Note: station_id removed - not a column in transport_drivers/transport_vehicles
             }
 
             if (activeTab === 'drivers') {

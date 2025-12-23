@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { announcementService } from '@services/announcementService'
 import { Plus, Trash2, Edit, Video, Image as ImageIcon, Type, ExternalLink } from 'lucide-react'
+import { ANNOUNCEMENT_TARGETS, ANNOUNCEMENT_TARGET_LABELS } from '@utils/constants'
 
 export default function AnnouncementsPage() {
     const [announcements, setAnnouncements] = useState([])
@@ -18,7 +19,8 @@ export default function AnnouncementsPage() {
         priority: 'low',
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        isActive: true
+        isActive: true,
+        display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
     })
 
     useEffect(() => {
@@ -59,7 +61,8 @@ export default function AnnouncementsPage() {
                 priority: item.priority || 'low',
                 start_date: item.start_date.split('T')[0],
                 end_date: item.end_date.split('T')[0],
-                isActive: item.is_active
+                isActive: item.is_active,
+                display_targets: item.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
             })
         } else {
             setEditingItem(null)
@@ -72,7 +75,8 @@ export default function AnnouncementsPage() {
                 priority: 'low',
                 start_date: new Date().toISOString().split('T')[0],
                 end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                isActive: true
+                isActive: true,
+                display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
             })
         }
         setIsModalOpen(true)
@@ -89,7 +93,8 @@ export default function AnnouncementsPage() {
                 priority: formData.priority,
                 start_date: formData.start_date,
                 end_date: formData.end_date,
-                is_active: formData.isActive
+                is_active: formData.isActive,
+                display_targets: formData.display_targets
             }
 
             if (editingItem) {
@@ -126,8 +131,8 @@ export default function AnnouncementsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {announcements.map((item) => (
                         <div key={item.id} className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border-l-4 ${item.priority === 'high' ? 'border-red-500' :
-                                item.priority === 'medium' ? 'border-yellow-500' :
-                                    item.priority === 'recognition' ? 'border-yellow-400' : 'border-blue-500'
+                            item.priority === 'medium' ? 'border-yellow-500' :
+                                item.priority === 'recognition' ? 'border-yellow-400' : 'border-blue-500'
                             }`}>
                             {/* Media Preview */}
                             <div className="h-48 bg-gray-100 dark:bg-gray-900 flex items-center justify-center relative">
@@ -172,6 +177,15 @@ export default function AnnouncementsPage() {
                                                 item.priority === 'recognition' ? '✨ Reconocimiento' : '🔵 Info'}
                                     </span>
                                     <span>{item.start_date} - {item.end_date}</span>
+                                </div>
+
+                                {/* Display Targets Badges */}
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                    {(item.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]).map(target => (
+                                        <span key={target} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                                            {ANNOUNCEMENT_TARGET_LABELS[target] || target}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -279,6 +293,62 @@ export default function AnnouncementsPage() {
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Display Targets Selection */}
+                            <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                                <label className="block text-sm font-medium mb-2 dark:text-gray-300">
+                                    ¿Dónde se mostrará este anuncio?
+                                </label>
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.BOARD)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.BOARD]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.BOARD)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-blue-600 rounded"
+                                        />
+                                        <span className="text-sm dark:text-gray-300">{ANNOUNCEMENT_TARGET_LABELS.BOARD}</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.FOOD_KIOSK)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.FOOD_KIOSK]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.FOOD_KIOSK)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-blue-600 rounded"
+                                        />
+                                        <span className="text-sm dark:text-gray-300">{ANNOUNCEMENT_TARGET_LABELS.FOOD_KIOSK}</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.DRIVER_KIOSK)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.DRIVER_KIOSK)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-blue-600 rounded"
+                                        />
+                                        <span className="text-sm dark:text-gray-300">{ANNOUNCEMENT_TARGET_LABELS.DRIVER_KIOSK}</span>
+                                    </label>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                    Selecciona al menos una opción
+                                </p>
                             </div>
 
                             <div className="flex items-center gap-2 mb-6">

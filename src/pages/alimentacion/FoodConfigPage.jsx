@@ -5,11 +5,11 @@ import stationService from '@services/stationService'
 import { ROLES } from '@utils/constants'
 
 const FoodConfigPage = () => {
-    const { user, hasRole } = useAuth()
+    const { user, station, hasRole } = useAuth()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [stations, setStations] = useState([])
-    const [selectedStationId, setSelectedStationId] = useState('')
+    const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // Initialize with current station from header
     const [config, setConfig] = useState({
         order_start_time: '00:00',
         order_end_time: '23:59'
@@ -20,6 +20,13 @@ const FoodConfigPage = () => {
     useEffect(() => {
         loadData()
     }, [user])
+
+    // Sync selectedStationId when station changes in header (Global Admin selects station)
+    useEffect(() => {
+        if (station?.id && station.id !== selectedStationId) {
+            handleStationChange(station.id)
+        }
+    }, [station?.id])
 
     const loadData = async () => {
         try {

@@ -257,7 +257,7 @@ class TransportService {
         }
     }
 
-    async getDrivers({ providerId, stationId } = {}) {
+    async getDrivers({ providerId } = {}) {
         try {
             let q = supabase
                 .from('transport_drivers')
@@ -265,7 +265,8 @@ class TransportService {
                 .order('created_at', { ascending: false })
 
             if (providerId) q = q.eq('provider_id', providerId)
-            if (stationId) q = q.eq('station_id', stationId)
+            // Note: station_id column doesn't exist in transport_drivers table
+            // Drivers are associated with providers, not directly with stations
 
             const { data, error } = await q
             if (error) throw error
@@ -281,7 +282,7 @@ class TransportService {
             const { data, error } = await supabase
                 .from('system_users')
                 .select('id, username, role')
-                .or('role.eq.PROVIDER,role_name.eq.PROVIDER')
+                .eq('role', 'PROVIDER')
 
             if (error) throw error
             return data
@@ -357,7 +358,7 @@ class TransportService {
         }
     }
 
-    async getVehicles({ providerId, stationId } = {}) {
+    async getVehicles({ providerId } = {}) {
         try {
             let q = supabase
                 .from('transport_vehicles')
@@ -365,7 +366,8 @@ class TransportService {
                 .order('created_at', { ascending: false })
 
             if (providerId) q = q.eq('provider_id', providerId)
-            if (stationId) q = q.eq('station_id', stationId)
+            // Note: station_id column doesn't exist in transport_vehicles table
+            // Vehicles are associated with providers, not directly with stations
 
             const { data, error } = await q
             if (error) throw error

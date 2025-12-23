@@ -4,6 +4,7 @@ import { Plus, Trash2, Edit, Calendar, Info, Save, X, Megaphone, CheckCircle, Ar
 import { announcementService } from '../../services/announcementService'
 import stationService from '../../services/stationService'
 import { formatDate } from '../../utils/helpers'
+import { ANNOUNCEMENT_TARGETS, ANNOUNCEMENT_TARGET_LABELS } from '../../utils/constants'
 
 const AnnouncementsPage = () => {
     const [announcements, setAnnouncements] = useState([])
@@ -14,7 +15,8 @@ const AnnouncementsPage = () => {
         message: '',
         end_date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
         is_active: true,
-        station_id: '' // Empty for Global
+        station_id: '', // Empty for Global
+        display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK] // Default: all
     })
     const [stations, setStations] = useState([]) // For selector
     const [editingId, setEditingId] = useState(null)
@@ -92,7 +94,8 @@ const AnnouncementsPage = () => {
             start_date: announcement.start_date,
             end_date: announcement.end_date,
             is_active: announcement.is_active,
-            station_id: announcement.station_id || ''
+            station_id: announcement.station_id || '',
+            display_targets: announcement.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
         })
         setEditingId(announcement.id)
         setIsModalOpen(true)
@@ -106,7 +109,8 @@ const AnnouncementsPage = () => {
             start_date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
             end_date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
             is_active: true,
-            station_id: ''
+            station_id: '',
+            display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
         })
         setIsModalOpen(true)
     }
@@ -157,7 +161,7 @@ const AnnouncementsPage = () => {
                         <h3 className="text-lg font-bold text-gray-800 mb-2">{item.title}</h3>
 
                         {/* Station Badge */}
-                        <div className="mb-2">
+                        <div className="mb-2 space-y-2">
                             {item.station_id ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                     Estación: {stations.find(s => s.id === item.station_id)?.name || '...'}
@@ -167,6 +171,15 @@ const AnnouncementsPage = () => {
                                     Global (Todas)
                                 </span>
                             )}
+
+                            {/* Display Targets Badges */}
+                            <div className="flex flex-wrap gap-1">
+                                {(item.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]).map(target => (
+                                    <span key={target} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                        {ANNOUNCEMENT_TARGET_LABELS[target] || target}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
 
                         <p className="text-gray-600 text-sm mb-4 line-clamp-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
@@ -271,6 +284,62 @@ const AnnouncementsPage = () => {
                                         onChange={e => setFormData({ ...formData, end_date: e.target.value })}
                                     />
                                 </div>
+                            </div>
+
+                            {/* Display Targets Selection */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    ¿Dónde se mostrará este anuncio?
+                                </label>
+                                <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.BOARD)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.BOARD]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.BOARD)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500 border-gray-300"
+                                        />
+                                        <span className="text-sm text-gray-700">{ANNOUNCEMENT_TARGET_LABELS.BOARD}</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.FOOD_KIOSK)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.FOOD_KIOSK]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.FOOD_KIOSK)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500 border-gray-300"
+                                        />
+                                        <span className="text-sm text-gray-700">{ANNOUNCEMENT_TARGET_LABELS.FOOD_KIOSK}</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.display_targets.includes(ANNOUNCEMENT_TARGETS.DRIVER_KIOSK)}
+                                            onChange={(e) => {
+                                                const targets = e.target.checked
+                                                    ? [...formData.display_targets, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
+                                                    : formData.display_targets.filter(t => t !== ANNOUNCEMENT_TARGETS.DRIVER_KIOSK)
+                                                setFormData({ ...formData, display_targets: targets })
+                                            }}
+                                            className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500 border-gray-300"
+                                        />
+                                        <span className="text-sm text-gray-700">{ANNOUNCEMENT_TARGET_LABELS.DRIVER_KIOSK}</span>
+                                    </label>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Selecciona al menos una opción
+                                </p>
                             </div>
 
                             <div className="flex items-center gap-2 pt-2">

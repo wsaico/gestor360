@@ -354,6 +354,32 @@ export const ORDER_TYPE_LABELS = {
   MANUAL: 'Regularización Manual'
 }
 
+// Opciones de consumo
+export const DINING_OPTIONS = {
+  DINE_IN: 'EN_RESTAURANTE',
+  TAKEAWAY: 'PARA_LLEVAR'
+}
+
+// Labels para opciones de consumo
+export const DINING_OPTION_LABELS = {
+  EN_RESTAURANTE: 'En restaurante',
+  PARA_LLEVAR: 'Para llevar'
+}
+
+// Display targets for announcements
+export const ANNOUNCEMENT_TARGETS = {
+  BOARD: 'BOARD',
+  FOOD_KIOSK: 'FOOD_KIOSK',
+  DRIVER_KIOSK: 'DRIVER_KIOSK'
+}
+
+// Labels for announcement targets
+export const ANNOUNCEMENT_TARGET_LABELS = {
+  BOARD: 'Panel Principal',
+  FOOD_KIOSK: 'Kiosko de Comida',
+  DRIVER_KIOSK: 'Kiosko de Conductor'
+}
+
 // Umbrales para el semáforo de EPPs (días)
 export const EPP_ALERT_THRESHOLDS = {
   DANGER: 0,    // Rojo: Vencido

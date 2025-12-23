@@ -201,6 +201,24 @@ export const AuthProvider = ({ children }) => {
     return null
   }
 
+  /**
+   * Obtiene el ID de estación efectivo para queries
+   * Centraliza la lógica de filtrado por estación
+   * @param {string} selectedStationId - Estación seleccionada en UI (opcional)
+   * @returns {string|null} - ID de estación para filtrar, o null para ver todas
+   */
+  const getEffectiveStationId = (selectedStationId = null) => {
+    // Si es Global Admin (ADMIN sin estación asignada)
+    if (user?.role === 'ADMIN' && !user?.station_id) {
+      // Usar la estación seleccionada en UI, o null para ver todas
+      return selectedStationId || null
+    }
+
+    // Si es Station User (tiene estación asignada)
+    // Siempre usar su estación, ignorar selección
+    return station?.id || null
+  }
+
   const value = {
     user,
     station,
@@ -216,7 +234,8 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     updateStation,
     selectStation,
-    fetchStations
+    fetchStations,
+    getEffectiveStationId
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

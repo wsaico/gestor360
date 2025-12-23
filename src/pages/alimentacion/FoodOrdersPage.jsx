@@ -12,7 +12,8 @@ import {
     UtensilsCrossed,
     Download,
     Plus,
-    AlertTriangle
+    AlertTriangle,
+    ShoppingBag
 } from 'lucide-react'
 import SearchableSelect from '@components/common/SearchableSelect'
 import employeeService from '@services/employeeService' // Add employee service
@@ -28,7 +29,7 @@ import { useNotification } from '@contexts/NotificationContext'
 import * as XLSX from 'xlsx' // Add XLSX import
 
 const FoodOrdersPage = () => {
-    const { user, station, hasRole } = useAuth()
+    const { user, station, hasRole, getEffectiveStationId } = useAuth()
     const { notify } = useNotification() // Hook
     const [loading, setLoading] = useState(false)
     const [orders, setOrders] = useState([])
@@ -36,7 +37,7 @@ const FoodOrdersPage = () => {
 
     // Filters
     const [stations, setStations] = useState([])
-    const [selectedStationId, setSelectedStationId] = useState(user?.station_id || '')
+    const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // Initialize with current station
     const [dateRange, setDateRange] = useState({
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date(Date.now() + 86400000).toISOString().split('T')[0]
@@ -76,22 +77,22 @@ const FoodOrdersPage = () => {
     /* Logic determining view mode */
     const isManager = hasRole(ROLES.ADMIN) || hasRole(ROLES.SUPERVISOR) || hasRole(ROLES.PROVIDER)
 
-    // Init
+    // Sync selectedStationId when station changes in header (Global Admin selects station)
+    useEffect(() => {
+        if (station?.id && station.id !== selectedStationId) {
+            setSelectedStationId(station.id)
+        } else if (!station?.id && user?.role === 'ADMIN' && !user?.station_id) {
+            // Global Admin cleared station selection
+            setSelectedStationId('')
+        }
+    }, [station?.id])
+
+    // Load stations list for Global Admins
     useEffect(() => {
         if (hasRole(ROLES.ADMIN)) {
             loadStations()
         }
-        // Sync with Global Station Context (Header Selector)
-        if (station) {
-            setSelectedStationId(station.id)
-        } else if (user?.station_id) {
-            // Fallback to user assigned station if not global admin context
-            setSelectedStationId(user.station_id)
-        } else {
-            // Global Admin with no station selected -> Show All (empty string)
-            setSelectedStationId('')
-        }
-    }, [user, station]) // Add station to dependency
+    }, [])
 
     useEffect(() => {
         // Allow loading with empty stationId (Global View) for Admins
@@ -765,6 +766,14 @@ const FoodOrdersPage = () => {
                                         <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{order.selected_option}</p>
                                     </div>
                                 </div>
+
+                                {/* Dining Option Badge */}
+                                {order.dining_option === 'PARA_LLEVAR' && (
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full w-fit">
+                                        <ShoppingBag className="w-3 h-3" />
+                                        <span className="text-xs font-medium">Para llevar</span>
+                                    </div>
+                                )}
 
                                 {order.notes && (
                                     <p className="text-xs italic text-gray-500 bg-gray-50 dark:bg-gray-900/30 p-2 rounded-lg">

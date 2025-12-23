@@ -37,13 +37,13 @@ import { formatDate } from '@utils/helpers'
  */
 const EmployeesPage = () => {
   const navigate = useNavigate()
-  const { user, station } = useAuth()
+  const { user, station, getEffectiveStationId } = useAuth()
   const { notify } = useNotification()
   const isAdmin = user?.role === 'ADMIN'
 
   const [employees, setEmployees] = useState([])
   const [stations, setStations] = useState([])
-  const [selectedStationId, setSelectedStationId] = useState('') // Filter value
+  const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // Initialize with current station from header
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -85,6 +85,13 @@ const EmployeesPage = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Sync selectedStationId when station changes in header (Global Admin selects station)
+  useEffect(() => {
+    if (station?.id && station.id !== selectedStationId) {
+      setSelectedStationId(station.id)
+    }
+  }, [station?.id])
+
   // Legacy handleFileUpload and handleDownloadTemplate removed in favor of EmployeeImportModal
 
   /**
@@ -94,10 +101,8 @@ const EmployeesPage = () => {
     try {
       setLoading(true)
 
-      // FIX: Use selectedStationId for Admins, context station for others
-      const targetStationId = isAdmin
-        ? (selectedStationId || null)
-        : (station?.id || null)
+      // Use helper to get effective station ID based on user role
+      const targetStationId = getEffectiveStationId(selectedStationId)
 
       const filters = {
         status: statusFilter,

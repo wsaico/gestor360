@@ -56,7 +56,7 @@ const mapMasterTypeToEnum = (masterType, masterCategory) => {
 }
 
 const InventoryPage = () => {
-  const { station, user } = useAuth()
+  const { station, user, getEffectiveStationId } = useAuth()
   const { notify } = useNotification()
   const fileInputRef = useRef(null)
 
@@ -71,6 +71,7 @@ const InventoryPage = () => {
   const [filterArea, setFilterArea] = useState('ALL')
   const [showModal, setShowModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
+  const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // For Global Admin station selection
 
   // States for Add Stock Modal
   const [showStockModal, setShowStockModal] = useState(false)
@@ -159,6 +160,13 @@ const InventoryPage = () => {
     }
   }, [station?.id, user?.role])
 
+  // Sync selectedStationId when station changes in header (Global Admin selects station)
+  useEffect(() => {
+    if (station?.id && station.id !== selectedStationId) {
+      setSelectedStationId(station.id)
+    }
+  }, [station?.id])
+
   const fetchSettings = async () => {
     try {
       const { data } = await supabase
@@ -192,7 +200,7 @@ const InventoryPage = () => {
 
     try {
       setLoading(true)
-      const targetStationId = station?.id || null // Pass null to service for Global View
+      const targetStationId = getEffectiveStationId(selectedStationId)
 
       const [inventoryData, areasData, categoriesData, employeesData] = await Promise.all([
         eppInventoryService.getAll(targetStationId),

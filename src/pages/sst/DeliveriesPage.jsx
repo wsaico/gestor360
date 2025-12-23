@@ -44,7 +44,7 @@ import {
 } from '@utils/constants'
 
 const DeliveriesPage = () => {
-  const { station, user } = useAuth()
+  const { station, user, getEffectiveStationId } = useAuth()
   const { notify } = useNotification()
 
   const [deliveries, setDeliveries] = useState([])
@@ -53,6 +53,7 @@ const DeliveriesPage = () => {
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // For Global Admin station selection
 
   // Settings State
   const [valuationEnabled, setValuationEnabled] = useState(false)
@@ -210,6 +211,13 @@ const DeliveriesPage = () => {
     }
   }, [station?.id, user?.role])
 
+  // Sync selectedStationId when station changes in header (Global Admin selects station)
+  useEffect(() => {
+    if (station?.id && station.id !== selectedStationId) {
+      setSelectedStationId(station.id)
+    }
+  }, [station?.id])
+
   const [appSettings, setAppSettings] = useState({})
 
   // ... (existing effects)
@@ -264,7 +272,7 @@ const DeliveriesPage = () => {
 
     try {
       setLoading(true)
-      const targetStationId = station?.id || null
+      const targetStationId = getEffectiveStationId(selectedStationId)
 
       // Load Deliveries Paginated
       const { data: deliveriesData, count } = await deliveryService.getPaginated(targetStationId, {

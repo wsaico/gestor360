@@ -110,11 +110,16 @@ class FoodOrderService {
 
   /**
    * Obtiene el historial de pedidos de un empleado (Público)
-   * Limitado a los últimos 50 pedidos
+   * @param {string} employeeId - ID del empleado
+   * @param {Object} options - Opciones de filtrado
+   * @param {string} options.startDate - Fecha inicio (YYYY-MM-DD)
+   * @param {string} options.endDate - Fecha fin (YYYY-MM-DD)
+   * @param {boolean} options.currentPayrollPeriod - Si true, filtra por período de planilla actual (16 al 15)
+   * @returns {Promise<Array>}
    */
-  async getPublicHistory(employeeId) {
+  async getPublicHistory(employeeId, options = {}) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('food_orders')
         .select(`
           id, 
@@ -125,11 +130,48 @@ class FoodOrderService {
           notes, 
           cost_applied, 
           company_subsidy_snapshot, 
+          order_type,
           created_at
         `)
         .eq('employee_id', employeeId)
         .order('menu_date', { ascending: false })
-        .limit(50)
+
+      // Si se solicita período de planilla actual (16 al 15)
+      if (options.currentPayrollPeriod) {
+        const today = new Date()
+        const currentDay = today.getDate()
+
+        let startDate, endDate
+
+        if (currentDay >= 16) {
+          // Estamos en la segunda quincena: del 16 de este mes al 15 del próximo
+          startDate = new Date(today.getFullYear(), today.getMonth(), 16)
+          endDate = new Date(today.getFullYear(), today.getMonth() + 1, 15)
+        } else {
+          // Estamos en la primera quincena: del 16 del mes pasado al 15 de este mes
+          startDate = new Date(today.getFullYear(), today.getMonth() - 1, 16)
+          endDate = new Date(today.getFullYear(), today.getMonth(), 15)
+        }
+
+        query = query
+          .gte('menu_date', startDate.toISOString().split('T')[0])
+          .lte('menu_date', endDate.toISOString().split('T')[0])
+      }
+      // Si se proporcionan fechas personalizadas
+      else if (options.startDate || options.endDate) {
+        if (options.startDate) {
+          query = query.gte('menu_date', options.startDate)
+        }
+        if (options.endDate) {
+          query = query.lte('menu_date', options.endDate)
+        }
+      }
+      // Si no hay filtros, limitar a últimos 50
+      else {
+        query = query.limit(50)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       return data || []

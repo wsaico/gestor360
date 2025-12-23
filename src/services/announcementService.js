@@ -18,8 +18,10 @@ export const announcementService = {
     /**
      * Get Public Announcements (Kiosk View)
      * Fetches only ACTIVE and DATE-VALID announcements for a specific station (or global).
+     * @param {string} stationId - Station ID or null for global
+     * @param {string} targetContext - Optional: 'BOARD', 'FOOD_KIOSK', 'DRIVER_KIOSK' to filter by display target
      */
-    async getPublicAnnouncements(stationId) {
+    async getPublicAnnouncements(stationId, targetContext = null) {
         const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
 
         let query = supabase
@@ -41,7 +43,20 @@ export const announcementService = {
 
         const { data, error } = await query
         if (error) throw error
-        return data
+
+        // Filter by target context if specified
+        if (targetContext && data) {
+            return data.filter(ann => {
+                // If no targets specified (old announcements or null), show everywhere (backward compatibility)
+                if (!ann.display_targets || ann.display_targets.length === 0) {
+                    return true
+                }
+                // Check if target context is in the array
+                return ann.display_targets.includes(targetContext)
+            })
+        }
+
+        return data || []
     },
 
     /**
