@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@contexts/AuthContext'
 import { useNotification } from '@contexts/NotificationContext'
 import transportService from '@services/transportService'
@@ -18,7 +18,9 @@ import {
     List,
     Camera,
     Car,
-    LogOut
+    LogOut,
+    Zap,
+    ZapOff
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Swal from 'sweetalert2'
@@ -173,31 +175,51 @@ const DriverSelector = ({ onSelect, providerId }) => {
 
 const CameraScannerModal = ({ onClose, onScan, darkMode }) => {
     const [scannerError, setScannerError] = useState(null)
+    const [torch, setTorch] = useState(false)
+    const [hasTorch, setHasTorch] = useState(false)
+    const scannerRef = useRef(null)
+    const onScanRef = useRef(onScan)
+
+    // Sincronizar el ref con el callback más reciente sin disparar el effect
+    useEffect(() => {
+        onScanRef.current = onScan
+    }, [onScan])
 
     useEffect(() => {
         const scannerId = "reader"
         const html5QrCode = new Html5Qrcode(scannerId)
+        scannerRef.current = html5QrCode
 
         const startScanner = async () => {
             try {
-                // Configuración optimizada para móviles
                 const config = {
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
+                    fps: 15, // Aumentar FPS para más fluidez
+                    qrbox: (viewWidth, viewHeight) => {
+                        const size = Math.min(viewWidth, viewHeight) * 0.7
+                        return { width: size, height: size }
+                    },
                     aspectRatio: 1.0
                 }
 
-                // Iniciar escaneo forzando cámara trasera
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     config,
                     (decodedText) => {
-                        onScan(decodedText)
+                        if (onScanRef.current) onScanRef.current(decodedText)
                     },
-                    (errorMessage) => {
-                        // Errores de escaneo comunes mientras se posiciona, solo loguear si es crítico
-                    }
+                    () => { /* Errores de frame silenciosos */ }
                 )
+
+                // Verificar si tiene linterna
+                setTimeout(() => {
+                    try {
+                        const track = html5QrCode.getRunningTrackCapabilities()
+                        if (track && track.torch) {
+                            setHasTorch(true)
+                        }
+                    } catch (e) { console.warn("Flashlight not supported", e) }
+                }, 1000)
+
             } catch (err) {
                 console.error("Error al iniciar el escáner:", err)
                 let msg = "Error al acceder a la cámara"
@@ -207,62 +229,96 @@ const CameraScannerModal = ({ onClose, onScan, darkMode }) => {
             }
         }
 
-        // Pequeño delay para asegurar que el div 'reader' esté montado
-        const timer = setTimeout(startScanner, 300)
+        const timer = setTimeout(startScanner, 400)
 
         return () => {
             clearTimeout(timer)
             if (html5QrCode.isScanning) {
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear()
-                }).catch(e => console.error("Error al detener el escáner:", e))
+                html5QrCode.stop()
+                    .then(() => html5QrCode.clear())
+                    .catch(e => console.error("Error al detener el escáner:", e))
             }
         }
-    }, [onScan])
+    }, []) // Solo se ejecuta al montar
+
+    const toggleTorch = async () => {
+        if (!scannerRef.current || !scannerRef.current.isScanning) return
+        try {
+            const newState = !torch
+            await scannerRef.current.applyVideoConstraints({
+                advanced: [{ torch: newState }]
+            })
+            setTorch(newState)
+        } catch (e) {
+            console.error("Error toggling torch:", e)
+        }
+    }
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md">
-            <button
-                onClick={onClose}
-                className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white z-50 transition-colors active:scale-90"
-            >
-                <X className="w-8 h-8" />
-            </button>
+        <div className="fixed inset-0 z-50 bg-black/98 flex flex-col items-center justify-center p-4 backdrop-blur-xl">
+            {/* Botón de cierre superior */}
+            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-50">
+                <button
+                    onClick={onClose}
+                    className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl text-white transition-all active:scale-90"
+                >
+                    <X className="w-8 h-8" />
+                </button>
 
-            <div className="text-center mb-8 relative">
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-primary-500/20 rounded-full blur-2xl animate-pulse"></div>
-                <h2 className="text-white text-2xl font-bold mb-2">Escaneando Fotocheck...</h2>
-                <p className="text-gray-400 text-sm max-w-xs mx-auto">
-                    Apunte la cámara al código de barras o QR para registrar el pasajero automáticamente.
+                {hasTorch && (
+                    <button
+                        onClick={toggleTorch}
+                        className={`p-3 rounded-2xl transition-all active:scale-90 ${torch ? 'bg-yellow-400 text-black' : 'bg-white/10 text-white'}`}
+                    >
+                        {torch ? <Zap className="w-8 h-8" /> : <ZapOff className="w-8 h-8" />}
+                    </button>
+                )}
+            </div>
+
+            <div className="text-center mb-10 relative">
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-40 h-40 bg-primary-500/10 rounded-full blur-3xl animate-pulse"></div>
+                <h2 className="text-white text-3xl font-bold mb-3 tracking-tight">Escaneo Activo</h2>
+                <p className="text-gray-400 text-base max-w-[280px] mx-auto leading-relaxed">
+                    Coloque el código de barras o QR dentro del recuadro para registrarlo.
                 </p>
             </div>
 
-            <div className="relative w-full max-w-sm aspect-square bg-slate-800 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] border-4 border-slate-700/50">
+            <div className="relative w-full max-w-[340px] aspect-square bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.8)] border-[6px] border-slate-800">
                 <div id="reader" className="w-full h-full"></div>
 
-                {/* Overlay decorativo de escaneo */}
-                <div className="absolute inset-0 border-2 border-primary-500/30 rounded-[inherit] pointer-events-none">
-                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-primary-500/50 shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-scan"></div>
+                {/* Overlay dinámico */}
+                <div className="absolute inset-0 pointer-events-none">
+                    {/* Esquineras */}
+                    <div className="absolute top-8 left-8 w-12 h-12 border-t-4 border-l-4 border-primary-500 rounded-tl-lg"></div>
+                    <div className="absolute top-8 right-8 w-12 h-12 border-t-4 border-r-4 border-primary-500 rounded-tr-lg"></div>
+                    <div className="absolute bottom-8 left-8 w-12 h-12 border-b-4 border-l-4 border-primary-500 rounded-bl-lg"></div>
+                    <div className="absolute bottom-8 right-8 w-12 h-12 border-b-4 border-r-4 border-primary-500 rounded-br-lg"></div>
+
+                    {/* Línea de escaneo */}
+                    {!scannerError && (
+                        <div className="absolute top-1/2 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary-400 to-transparent shadow-[0_0_20px_rgba(59,130,246,0.8)] animate-scan"></div>
+                    )}
                 </div>
 
                 {scannerError && (
-                    <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center">
-                        <Camera className="w-12 h-12 text-red-500 mb-4 opacity-50" />
-                        <p className="text-red-400 font-bold mb-4">{scannerError}</p>
+                    <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
+                        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+                            <Camera className="w-8 h-8 text-red-500" />
+                        </div>
+                        <p className="text-white font-bold text-lg mb-2">Cámara no disponible</p>
+                        <p className="text-red-400/80 text-sm mb-8 leading-relaxed">{scannerError}</p>
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold active:scale-95"
+                            className="w-full py-4 bg-primary-600 hover:bg-primary-500 text-white rounded-2xl font-bold transition-colors shadow-lg shadow-primary-900/40 active:scale-95"
                         >
-                            Reintentar
+                            Reintentar Conexión
                         </button>
                     </div>
                 )}
             </div>
 
-            <div className="mt-12 flex items-center gap-4 text-gray-500 text-xs font-bold uppercase tracking-[0.2em]">
-                <div className="w-8 h-px bg-gray-700"></div>
-                <span>Posicione el código al centro</span>
-                <div className="w-8 h-px bg-gray-700"></div>
+            <div className="mt-16 text-primary-500/50 text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">
+                Auto-enfoque habilitado
             </div>
         </div>
     )
@@ -680,15 +736,12 @@ const DriverDashboard = () => {
         })
     }
 
-    const handleCameraScan = (code) => {
+    const handleCameraScan = useCallback((code) => {
         // Find passenger
         const pax = passengers.find(p => p.dni === code)
 
-        // Pause simple protection against rapid dual scans not needed with find check
         if (!pax) {
-            // Error Sound
-            // playErrorSound() 
-            // Toast Error
+            // Mostrar error solo si no ha sido registrado
             const Toast = Swal.mixin({
                 toast: true,
                 position: 'top',
@@ -697,7 +750,6 @@ const DriverDashboard = () => {
                 background: '#ef4444',
                 color: '#fff'
             })
-            // Toast.fire({ icon: 'error', title: 'DNI No Encontrado' })
             return
         }
 
@@ -710,7 +762,7 @@ const DriverDashboard = () => {
                 background: '#f59e0b',
                 color: '#fff'
             })
-            Toast.fire({ icon: 'info', title: `Ya registrado: ${pax.first_name}` })
+            // Toast.fire({ icon: 'info', title: `Ya registrado: ${pax.first_name}` })
             return
         }
 
@@ -726,8 +778,8 @@ const DriverDashboard = () => {
             background: '#22c55e',
             color: '#fff'
         })
-        Toast.fire({ icon: 'success', title: `BIENVENIDO: ${pax.first_name} ${pax.last_name}` })
-    }
+        Toast.fire({ icon: 'success', title: `REGISTRADO: ${pax.first_name} ${pax.last_name}` })
+    }, [passengers, checkedPax])
 
 
     const handleViewSummary = async (schedule) => {
