@@ -737,19 +737,23 @@ const DriverDashboard = () => {
     }
 
     const handleCameraScan = useCallback((code) => {
-        // Find passenger
+        if (!code) return
+        console.log("Scanner detectó:", code)
+
+        // Buscar pasajero
         const pax = passengers.find(p => p.dni === code)
 
         if (!pax) {
-            // Mostrar error solo si no ha sido registrado
+            console.warn("DNI no encontrado en la lista de pasajeros:", code)
             const Toast = Swal.mixin({
                 toast: true,
                 position: 'top',
                 showConfirmButton: false,
                 timer: 2000,
-                background: '#ef4444',
+                background: '#4b5563', // Gray to avoid panic
                 color: '#fff'
             })
+            Toast.fire({ icon: 'warning', title: `DNI ${code} no agendado` })
             return
         }
 
