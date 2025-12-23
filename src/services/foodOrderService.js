@@ -194,6 +194,7 @@ class FoodOrderService {
         .from('food_orders')
         .select(`
           *,
+          employee:employees(id, full_name, dni, role_name, status),
           menu:menus(
             id,
             serve_date,
