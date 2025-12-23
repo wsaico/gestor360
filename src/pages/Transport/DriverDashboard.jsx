@@ -508,6 +508,13 @@ const DriverDashboard = () => {
     const [summarySchedule, setSummarySchedule] = useState(null)
     const [summaryPax, setSummaryPax] = useState([]) // Pax details for summary
 
+    // Persist checkedPax to localStorage whenever it changes
+    useEffect(() => {
+        if (activeSchedule && checkedPax.length > 0) {
+            localStorage.setItem(`trip_checks_${activeSchedule.id}`, JSON.stringify(checkedPax))
+        }
+    }, [checkedPax, activeSchedule])
+
     // UI State
     // const [darkMode, setDarkMode] = useState(true) // Default to dark for drivers - already declared above
     // const [loading, setLoading] = useState(false) - already declared above
@@ -604,6 +611,17 @@ const DriverDashboard = () => {
                 } catch (e2) { console.error("Critical manifest failure:", e2) }
             }
         }
+
+        // Restore checked passengers from localStorage if available
+        const storedChecks = localStorage.getItem(`trip_checks_${schedule.id}`)
+        if (storedChecks) {
+            try {
+                setCheckedPax(JSON.parse(storedChecks))
+            } catch (e) {
+                console.error('Error parsing stored checks:', e)
+            }
+        }
+
         startGpsTracking(schedule.execution.id)
     }
 
@@ -760,6 +778,11 @@ const DriverDashboard = () => {
             setActiveSchedule(null)
             setViewMode('list')
             setCheckedPax([])
+
+            // Clear localStorage for this trip
+            if (activeSchedule) {
+                localStorage.removeItem(`trip_checks_${activeSchedule.id}`)
+            }
         } catch (error) {
             Swal.fire({
                 icon: 'error',
@@ -800,7 +823,7 @@ const DriverDashboard = () => {
                 background: '#22c55e',
                 color: '#fff'
             })
-            Toast.fire({ icon: 'success', title: `REGISTRADO: ${pax.first_name}` })
+            Toast.fire({ icon: 'success', title: `REGISTRADO: ${pax.full_name || pax.first_name}` })
         } else {
             const Toast = Swal.mixin({
                 toast: true,
@@ -810,7 +833,7 @@ const DriverDashboard = () => {
                 background: '#f59e0b',
                 color: '#fff'
             })
-            Toast.fire({ icon: 'info', title: `NO SHOW: ${pax.first_name}` })
+            Toast.fire({ icon: 'info', title: `NO SHOW: ${pax.full_name || pax.first_name}` })
         }
     }, [checkedPax, currentLocation])
 
