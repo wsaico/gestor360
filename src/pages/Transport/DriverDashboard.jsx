@@ -46,6 +46,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 // --- HELPER COMPONENTS ---
 
 const MapView = ({ location, destination }) => {
+    console.log('🗺️ MapView rendering with location:', location)
     const mapRef = useRef(null)
 
     // Component to update map center when location changes
@@ -63,11 +64,11 @@ const MapView = ({ location, destination }) => {
     const displayLoc = location || { lat: -11.7752, lng: -75.4983 }
 
     return (
-        <div className="h-full w-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
+        <div className="w-full h-[500px] bg-slate-100 dark:bg-slate-900">
             <MapContainer
                 center={[displayLoc.lat, displayLoc.lng]}
                 zoom={15}
-                style={{ height: '100%', width: '100%', zIndex: 0 }}
+                style={{ height: '500px', width: '100%' }}
                 ref={mapRef}
             >
                 <TileLayer
@@ -1036,9 +1037,9 @@ const DriverDashboard = () => {
                                 </div>
 
                                 {viewMode === 'map' ? (
-                                    <div className="h-full w-full min-h-[400px]">
+                                    <div className="h-[500px] w-full">
                                         <MapView
-                                            location={currentLocation || { lat: -11.775, lng: -75.500 }} // Fallback to Jauja area if null
+                                            location={currentLocation || { lat: -11.775, lng: -75.500 }}
                                             destination={null}
                                         />
                                     </div>

@@ -1,15 +1,16 @@
+-- Drop existing function first (if it exists)
+DROP FUNCTION IF EXISTS get_passengers_for_schedule(UUID);
+
 -- RPC to safely fetch passengers for a specific schedule
--- FIXED: Added explicit table aliases to avoid ambiguous "id" reference
--- The error "column reference 'id' is ambiguous" happens because the return table 
--- column "id" name clashes with the table column "id" name in PL/pgSQL.
+-- FIXED: Match exact column types from employees table (VARCHAR instead of TEXT)
 
 CREATE OR REPLACE FUNCTION get_passengers_for_schedule(p_schedule_id UUID)
 RETURNS TABLE (
     pax_id UUID,
-    full_name TEXT,
-    dni TEXT,
-    station_name TEXT,
-    station_code TEXT
+    full_name VARCHAR(255),
+    dni VARCHAR(20),
+    station_name VARCHAR(255),
+    station_code VARCHAR(50)
 ) 
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -27,14 +28,13 @@ BEGIN
     END IF;
 
     -- Return employee details for those in the manifest
-    -- We select into the columns defined in RETURNS TABLE
     RETURN QUERY
     SELECT 
-        e.id as pax_id,
+        e.id,
         e.full_name,
         e.dni,
-        s.name as station_name,
-        s.code as station_code
+        s.name,
+        s.code
     FROM employees e
     LEFT JOIN stations s ON e.station_id = s.id
     WHERE e.id = ANY(v_manifest);
