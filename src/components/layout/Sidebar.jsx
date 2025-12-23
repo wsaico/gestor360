@@ -21,7 +21,12 @@ import {
   Clock,
   RefreshCw,
   Boxes,
-  Megaphone // Import Megaphone icon
+  Megaphone,
+  Car,
+  Map,
+  Navigation,
+  Calendar,
+  Smartphone
 } from 'lucide-react'
 import { ROLES } from '@utils/constants'
 
@@ -94,6 +99,56 @@ const menuItems = [
         path: '/activos/configuracion',
         icon: Settings,
         roles: [ROLES.ADMIN]
+      }
+    ]
+  },
+  {
+    title: 'Movilidad',
+    icon: Car,
+    roles: [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER],
+    children: [
+      {
+        title: 'Programación',
+        path: '/transport/schedules',
+        icon: Calendar,
+        roles: [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]
+      },
+      {
+        title: 'Facturación (Cierres)',
+        path: '/transport/settlements',
+        icon: DollarSign,
+        roles: [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]
+      },
+      {
+        title: 'Gestión de Flota',
+        path: '/transport/fleet',
+        icon: Car,
+        roles: [ROLES.ADMIN, ROLES.PROVIDER]
+      },
+      {
+        title: 'Rutero (Conductor)',
+        path: '/transport/driver',
+        icon: Navigation,
+        roles: [ROLES.ADMIN, ROLES.PROVIDER]
+      },
+      {
+        title: 'Kiosko Conductor',
+        path: '/transport/driver-login',
+        icon: Smartphone,
+        roles: [ROLES.ADMIN, ROLES.PROVIDER, ROLES.SUPERVISOR],
+        external: true // Indicate it opens without the main layout
+      },
+      {
+        title: 'Gestión de Rutas',
+        path: '/transport/routes',
+        icon: Map,
+        roles: [ROLES.ADMIN, ROLES.SUPERVISOR]
+      },
+      {
+        title: 'Auditoría GPS',
+        path: '/transport/audit',
+        icon: Map,
+        roles: [ROLES.ADMIN, ROLES.SUPERVISOR]
       }
     ]
   },

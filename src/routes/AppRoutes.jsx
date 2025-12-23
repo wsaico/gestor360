@@ -59,6 +59,19 @@ import RoleSettings from '@components/settings/RoleSettings'
 import SecuritySettings from '@components/settings/SecuritySettings'
 import MasterCatalogPage from '@pages/admin/MasterCatalogPage'
 
+// Módulos de Transporte
+import RoutesPage from '@pages/Transport/RoutesPage'
+import SchedulesPage from '@pages/Transport/SchedulesPage'
+import DriverDashboard from '@pages/Transport/DriverDashboard'
+import TransportAuditPage from '@pages/Transport/TransportAuditPage'
+import TransportFleetPage from '@pages/Transport/TransportFleetPage'
+import TransportSettlementsPage from '@pages/Transport/TransportSettlementsPage'
+import DriverLoginPage from '@pages/Transport/DriverLoginPage'
+
+
+
+
+
 
 import { ROLES } from '@utils/constants'
 
@@ -92,6 +105,8 @@ const AppRoutes = () => {
       {/* Rutas públicas */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/menu" element={<PublicMenuPage />} />
+      <Route path="/transport/driver-login" element={<DriverLoginPage />} />
+      <Route path="/transport/driver-dashboard" element={<DriverDashboard />} />
 
       {/* Kiosk Mode (Public or Protected via IP/Token ideally, kept open for ease for now) */}
       <Route element={<KioskLayout />}>
@@ -264,6 +279,56 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Módulo Transporte */}
+        <Route
+          path="transport/routes"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+              <RoutesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="transport/schedules"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]}>
+              <SchedulesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="transport/driver"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER]}>
+              <DriverDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="transport/audit"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+              <TransportAuditPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="transport/fleet"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER]}>
+              <TransportFleetPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="transport/settlements"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]}>
+              <TransportSettlementsPage />
             </ProtectedRoute>
           }
         />

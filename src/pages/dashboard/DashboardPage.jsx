@@ -16,7 +16,10 @@ import {
   FileText,
   Settings,
   ChefHat,
-  Truck
+  Truck,
+  Smartphone,
+  Copy,
+  ExternalLink
 } from 'lucide-react'
 import { ROLES } from '@utils/constants'
 
@@ -211,6 +214,40 @@ const DashboardPage = () => {
                 color="gray"
                 onClick={() => navigate('/reportes')}
               />
+
+              {(isGlobalAdmin || isStationAdmin || isProvider) && (
+                <div className="col-span-2 group">
+                  <div className="flex bg-slate-100 dark:bg-slate-700/50 rounded-xl p-2 gap-2 border border-slate-200 dark:border-slate-700">
+                    <button
+                      onClick={() => window.open('/transport/driver-login', '_blank')}
+                      className="flex-1 flex items-center gap-3 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-bold transition-all shadow-sm"
+                    >
+                      <Smartphone className="w-5 h-5 text-white/80" />
+                      <span>Kiosko Conductor</span>
+                      <ExternalLink className="w-4 h-4 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/transport/driver-login`
+                        navigator.clipboard.writeText(url)
+                        Swal.fire({
+                          title: 'Link Copiado',
+                          text: 'Puedes pegarlo en WhatsApp para enviarlo a los conductores',
+                          icon: 'success',
+                          timer: 2000,
+                          showConfirmButton: false,
+                          toast: true,
+                          position: 'top-end'
+                        })
+                      }}
+                      className="p-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary-600 rounded-lg border border-slate-200 dark:border-slate-600 transition-all shadow-sm hover:shadow-md"
+                      title="Copiar Link para Conductores"
+                    >
+                      <Copy className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

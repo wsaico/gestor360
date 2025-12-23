@@ -67,8 +67,6 @@ const FoodOrdersPage = () => {
         meal_type: 'ALMUERZO',
         selected_option: 'Menú del Día', // Default or fetch menus
         order_type: 'MANUAL', // MANUAL or VISITOR
-        selected_option: 'Menú del Día', // Default or fetch menus
-        order_type: 'MANUAL', // MANUAL or VISITOR
         notes: '',
         pricing_rule: 'STANDARD' // STANDARD | COURTESY | FULL
     })

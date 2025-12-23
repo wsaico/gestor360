@@ -20,10 +20,7 @@ export default defineConfig({
     host: '0.0.0.0',
     strictPort: false,
     allowedHosts: ['.trycloudflare.com', 'gratuit-souls-style-demographic.trycloudflare.com'],
-    hmr: {
-      clientPort: 443,
-      protocol: 'wss'
-    },
+
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
