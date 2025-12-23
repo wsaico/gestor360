@@ -192,13 +192,22 @@ const CameraScannerModal = ({ onClose, onScan, darkMode }) => {
 
         const startScanner = async () => {
             try {
+                // Configuración de ALTO RENDIMIENTO
                 const config = {
-                    fps: 15, // Aumentar FPS para más fluidez
+                    fps: 20, // Más frames para detección rápida
                     qrbox: (viewWidth, viewHeight) => {
-                        const size = Math.min(viewWidth, viewHeight) * 0.7
+                        // Área de escaneo más grande y flexible
+                        const size = Math.min(viewWidth, viewHeight) * 0.8
                         return { width: size, height: size }
                     },
-                    aspectRatio: 1.0
+                    aspectRatio: 1.0,
+                    // Solicitar resolución HD explícitamente para nitidez
+                    videoConstraints: {
+                        facingMode: "environment",
+                        width: { min: 1280, ideal: 1920 },
+                        height: { min: 720, ideal: 1080 },
+                        frameRate: { ideal: 30 }
+                    }
                 }
 
                 await html5QrCode.start(
@@ -207,24 +216,33 @@ const CameraScannerModal = ({ onClose, onScan, darkMode }) => {
                     (decodedText) => {
                         if (onScanRef.current) onScanRef.current(decodedText)
                     },
-                    () => { /* Errores de frame silenciosos */ }
+                    () => { /* Frame fail flow */ }
                 )
 
-                // Verificar si tiene linterna
+                // Aplicar capacidades avanzadas (Foco y Flash) tras un breve delay
                 setTimeout(() => {
                     try {
-                        const track = html5QrCode.getRunningTrackCapabilities()
-                        if (track && track.torch) {
-                            setHasTorch(true)
+                        const capabilities = html5QrCode.getRunningTrackCapabilities()
+                        console.log("Scanner Capabilities:", capabilities)
+
+                        if (capabilities.torch) setHasTorch(true)
+
+                        // Forzar Auto-Enfoque Continuo si está disponible
+                        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                            html5QrCode.applyVideoConstraints({
+                                focusMode: 'continuous'
+                            }).catch(e => console.error("Error setting focus mode:", e))
                         }
-                    } catch (e) { console.warn("Flashlight not supported", e) }
-                }, 1000)
+                    } catch (e) {
+                        console.warn("Advanced constraints not supported on this device", e)
+                    }
+                }, 2000)
 
             } catch (err) {
                 console.error("Error al iniciar el escáner:", err)
                 let msg = "Error al acceder a la cámara"
                 if (err.name === 'NotAllowedError') msg = "Permiso de cámara denegado"
-                if (err.name === 'NotFoundError') msg = "No se encontró ninguna cámara"
+                if (err.name === 'NotFoundError') msg = "No se encontró ninguna cámara HD"
                 setScannerError(msg)
             }
         }
