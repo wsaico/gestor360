@@ -703,8 +703,9 @@ const DriverDashboard = () => {
 
         try {
             stopGpsTracking()
-            const checkIns = checkedPax.map(id => ({ employee_id: id, timestamp: new Date().toISOString() }))
-            const res = await transportService.finishExecutionOfflineSafe(activeSchedule.id, checkIns)
+
+            // We send the enriched checkedPax objects directly
+            const res = await transportService.finishExecutionOfflineSafe(activeSchedule.id, checkedPax)
 
             if (res.offline) {
                 Swal.fire({
@@ -729,7 +730,6 @@ const DriverDashboard = () => {
             setActiveSchedule(null)
             setViewMode('list')
             setCheckedPax([])
-            // loadSchedules() // This will be handled by the activeDriver useEffect
         } catch (error) {
             Swal.fire({
                 icon: 'error',
@@ -741,16 +741,70 @@ const DriverDashboard = () => {
         }
     }
 
-    const tryManualCheck = () => {
-        if (navigator.vibrate) navigator.vibrate([50, 50, 50])
+    const processCheckIn = useCallback((pax, status = 'BOARDED') => {
+        if (!pax) return
+
+        const alreadyChecked = checkedPax.find(c => c.employee_id === pax.id)
+        if (alreadyChecked && alreadyChecked.status === status) return
+
+        const newRecord = {
+            employee_id: pax.id,
+            status: status,
+            timestamp: new Date().toISOString(),
+            lat: currentLocation?.lat || null,
+            lng: currentLocation?.lng || null
+        }
+
+        setCheckedPax(prev => {
+            const filtered = prev.filter(c => c.employee_id !== pax.id)
+            return [...filtered, newRecord]
+        })
+
+        if (status === 'BOARDED') {
+            if (navigator.vibrate) navigator.vibrate(200)
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 2000,
+                background: '#22c55e',
+                color: '#fff'
+            })
+            Toast.fire({ icon: 'success', title: `REGISTRADO: ${pax.first_name}` })
+        } else {
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 2000,
+                background: '#f59e0b',
+                color: '#fff'
+            })
+            Toast.fire({ icon: 'info', title: `NO SHOW: ${pax.first_name}` })
+        }
+    }, [checkedPax, currentLocation])
+
+    const handlePaxAction = (pax) => {
+        const record = checkedPax.find(c => c.employee_id === pax.id)
+
         Swal.fire({
-            icon: 'warning',
-            title: 'Acción Bloqueada',
-            text: 'El registro manual está inhabilitado. Debe ESCANEAR el fotocheck.',
-            timer: 2000,
-            showConfirmButton: false,
+            title: pax.full_name,
+            text: 'Seleccione una acción para el pasajero',
+            showCancelButton: true,
+            showDenyButton: true,
+            confirmButtonText: 'Abordó (Check-in)',
+            denyButtonText: 'No Show (Faltó)',
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#22c55e',
+            denyButtonColor: '#f59e0b',
             background: darkMode ? '#1e293b' : '#fff',
             color: darkMode ? '#fff' : '#000',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                processCheckIn(pax, 'BOARDED')
+            } else if (result.isDenied) {
+                processCheckIn(pax, 'NO_SHOW')
+            }
         })
     }
 
@@ -768,40 +822,15 @@ const DriverDashboard = () => {
                 position: 'top',
                 showConfirmButton: false,
                 timer: 2000,
-                background: '#4b5563', // Gray to avoid panic
+                background: '#4b5563',
                 color: '#fff'
             })
             Toast.fire({ icon: 'warning', title: `DNI ${code} no agendado` })
             return
         }
 
-        if (checkedPax.includes(pax.id)) {
-            const Toast = Swal.mixin({
-                toast: true,
-                position: 'top',
-                showConfirmButton: false,
-                timer: 1500,
-                background: '#f59e0b',
-                color: '#fff'
-            })
-            // Toast.fire({ icon: 'info', title: `Ya registrado: ${pax.first_name}` })
-            return
-        }
-
-        // Success Check-in
-        if (navigator.vibrate) navigator.vibrate(200)
-        setCheckedPax(prev => [...prev, pax.id])
-
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top',
-            showConfirmButton: false,
-            timer: 2000,
-            background: '#22c55e',
-            color: '#fff'
-        })
-        Toast.fire({ icon: 'success', title: `REGISTRADO: ${pax.first_name} ${pax.last_name}` })
-    }, [passengers, checkedPax])
+        processCheckIn(pax, 'BOARDED')
+    }, [passengers, processCheckIn])
 
 
     const handleViewSummary = async (schedule) => {
@@ -961,6 +990,22 @@ const DriverDashboard = () => {
 
                             {/* MAIN CONTENT: MAP OR LIST */}
                             <div className="flex-1 overflow-hidden relative rounded-xl border border-gray-200 dark:border-slate-800">
+                                {/* Map/List Toggle Button */}
+                                <div className="absolute top-2 right-2 z-10 flex bg-white/90 dark:bg-slate-900/90 p-1 rounded-xl shadow-lg border border-gray-200 dark:border-slate-700 backdrop-blur-sm">
+                                    <button
+                                        onClick={() => setViewMode('active')}
+                                        className={`p-2 rounded-lg transition-all ${viewMode === 'active' ? 'bg-primary-500 text-white' : 'text-gray-500'}`}
+                                    >
+                                        <List className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('map')}
+                                        className={`p-2 rounded-lg transition-all ${viewMode === 'map' ? 'bg-primary-500 text-white' : 'text-gray-500'}`}
+                                    >
+                                        <MapIcon className="w-5 h-5" />
+                                    </button>
+                                </div>
+
                                 {viewMode === 'map' ? (
                                     <MapView location={currentLocation} destination={null} />
                                 ) : (
@@ -968,31 +1013,50 @@ const DriverDashboard = () => {
                                         <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-3 px-2 pt-2">Manifiesto de Pasajeros</h3>
                                         <div className="flex-1 overflow-y-auto space-y-3 pb-4 noscrollbar px-2">
                                             {passengers.map(p => {
-                                                const checked = checkedPax.includes(p.id)
+                                                const record = checkedPax.find(c => c.employee_id === p.id)
+                                                const isBoarded = record?.status === 'BOARDED'
+                                                const isNoShow = record?.status === 'NO_SHOW'
+
+                                                let cardStyle = darkMode ? 'bg-slate-800 border-slate-700 opacity-70' : 'bg-white border-gray-100 opacity-70'
+                                                if (isBoarded) cardStyle = 'bg-green-500/10 border-green-500/50'
+                                                if (isNoShow) cardStyle = 'bg-amber-500/10 border-amber-500/50'
+
                                                 return (
                                                     <motion.div
                                                         layout
                                                         key={p.id}
-                                                        onClick={(e) => { e.preventDefault(); tryManualCheck(); }}
-                                                        className={`p-4 rounded-xl border flex items-center justify-between transition-all ${checked
-                                                            ? 'bg-green-500/10 border-green-500/50'
-                                                            : darkMode ? 'bg-slate-800 border-slate-700 opacity-70' : 'bg-white border-gray-100 opacity-70'
-                                                            }`}
+                                                        onClick={() => handlePaxAction(p)}
+                                                        className={`p-4 rounded-xl border flex items-center justify-between transition-all active:scale-[0.98] ${cardStyle}`}
                                                     >
-                                                        <div className="flex items-center gap-4 filter blur-[0px]">
-                                                            {/* User asked to HIDE names, but seeing "who is missing" implies seeing names. 
-                                                                If we want BLIND BLIND, we would blur names until scanned.
-                                                                Let's keep them visible but uncheckable based on "podria indicar que ha subido" -> this is solved by blocking the click.
-                                                            */}
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${checked ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${isBoarded ? 'bg-green-500 text-white' :
+                                                                isNoShow ? 'bg-amber-500 text-white' :
+                                                                    'bg-gray-200 dark:bg-gray-700 text-gray-500'
                                                                 }`}>
-                                                                {checked ? <CheckCircle className="w-6 h-6" /> : <UserCircle className="w-6 h-6" />}
+                                                                {isBoarded ? <CheckCircle className="w-6 h-6" /> :
+                                                                    isNoShow ? <X className="w-6 h-6" /> :
+                                                                        <UserCircle className="w-6 h-6" />}
                                                             </div>
                                                             <div>
-                                                                <p className={`font-bold text-lg ${checked ? 'text-green-500' : ''}`}>{checked ? p.full_name : '****** *******'}</p>
-                                                                <p className="text-xs opacity-50">{checked ? p.dni : '***'}</p>
+                                                                <p className={`font-bold text-sm ${isBoarded ? 'text-green-500' : isNoShow ? 'text-amber-500' : ''}`}>
+                                                                    {p.full_name}
+                                                                </p>
+                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                    <p className="text-[10px] opacity-50 font-mono tracking-tighter">
+                                                                        {record ? record.timestamp.split('T')[1].substring(0, 5) : '---'}
+                                                                    </p>
+                                                                    {record?.status && (
+                                                                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${isBoarded ? 'bg-green-500/20 text-green-500' : 'bg-amber-500/20 text-amber-500'
+                                                                            }`}>
+                                                                            {isBoarded ? 'Subió' : 'No Show'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
+                                                        {!record && (
+                                                            <div className="text-[10px] font-bold opacity-30 uppercase">Pendiente</div>
+                                                        )}
                                                     </motion.div>
                                                 )
                                             })}
