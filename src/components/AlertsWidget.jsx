@@ -25,8 +25,10 @@ const AlertsWidget = () => {
 
   useEffect(() => {
     fetchAlerts()
-    // Refrescar cada 5 minutos
-    const interval = setInterval(fetchAlerts, 5 * 60 * 1000)
+    // Refrescar cada 10 minutos (optimizado para Supabase free tier)
+    // Previous: 5min = ~288 queries/day
+    // Now: 10min = ~144 queries/day (50% additional reduction)
+    const interval = setInterval(fetchAlerts, 10 * 60 * 1000)
     return () => clearInterval(interval)
   }, [user])
 
@@ -156,31 +158,28 @@ const AlertsWidget = () => {
       <div className="flex space-x-1 border-b border-gray-200 mb-4">
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'all'
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all'
               ? 'border-primary-600 text-primary-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           Todas ({summary.totalAlerts})
         </button>
         <button
           onClick={() => setActiveTab('birthdays')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'birthdays'
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'birthdays'
               ? 'border-primary-600 text-primary-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           Cumpleaños ({birthdays.length})
         </button>
         <button
           onClick={() => setActiveTab('documents')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'documents'
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents'
               ? 'border-primary-600 text-primary-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           Documentos ({documents.length})
         </button>
@@ -237,26 +236,23 @@ const AlertsWidget = () => {
               <Link
                 key={doc.id}
                 to={`/rrhh/empleados/${doc.employee.id}`}
-                className={`flex items-center justify-between p-3 border rounded-lg hover:shadow-md transition-all ${
-                  doc.alertStatus.severity === 'danger'
+                className={`flex items-center justify-between p-3 border rounded-lg hover:shadow-md transition-all ${doc.alertStatus.severity === 'danger'
                     ? 'bg-red-50 border-red-300 hover:bg-red-100'
                     : 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100'
-                }`}
+                  }`}
               >
                 <div className="flex items-center space-x-3">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      doc.alertStatus.severity === 'danger'
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${doc.alertStatus.severity === 'danger'
                         ? 'bg-red-100'
                         : 'bg-yellow-100'
-                    }`}
+                      }`}
                   >
                     <FileText
-                      className={`w-5 h-5 ${
-                        doc.alertStatus.severity === 'danger'
+                      className={`w-5 h-5 ${doc.alertStatus.severity === 'danger'
                           ? 'text-red-600'
                           : 'text-yellow-600'
-                      }`}
+                        }`}
                     />
                   </div>
                   <div>
@@ -267,11 +263,10 @@ const AlertsWidget = () => {
                       {doc.doc_type} • {doc.employee.station?.code || 'N/A'}
                     </p>
                     <p
-                      className={`text-xs font-medium mt-1 ${
-                        doc.alertStatus.severity === 'danger'
+                      className={`text-xs font-medium mt-1 ${doc.alertStatus.severity === 'danger'
                           ? 'text-red-700'
                           : 'text-yellow-700'
-                      }`}
+                        }`}
                     >
                       {doc.daysRemaining < 0 ? (
                         `VENCIDO hace ${Math.abs(doc.daysRemaining)} días`
@@ -285,20 +280,18 @@ const AlertsWidget = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <span
-                    className={`badge ${
-                      doc.alertStatus.severity === 'danger'
+                    className={`badge ${doc.alertStatus.severity === 'danger'
                         ? 'badge-danger'
                         : 'badge-warning'
-                    }`}
+                      }`}
                   >
                     {doc.alertStatus.label}
                   </span>
                   <ChevronRight
-                    className={`w-5 h-5 ${
-                      doc.alertStatus.severity === 'danger'
+                    className={`w-5 h-5 ${doc.alertStatus.severity === 'danger'
                         ? 'text-red-600'
                         : 'text-yellow-600'
-                    }`}
+                      }`}
                   />
                 </div>
               </Link>

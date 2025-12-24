@@ -19,6 +19,7 @@ import SearchableSelect from '@components/common/SearchableSelect'
 import employeeService from '@services/employeeService' // Add employee service
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@contexts/AuthContext'
+import supabase from '@services/supabase'
 import foodOrderService from '@services/foodOrderService'
 import stationService from '@services/stationService'
 import pricingService from '@services/pricingService'
@@ -26,6 +27,7 @@ import menuService from '@services/menuService' // Add import
 import { ROLES, MEAL_TYPE_LABELS } from '@utils/constants'
 import { formatDate } from '@utils/helpers'
 import { useNotification } from '@contexts/NotificationContext'
+import Pagination from '@components/common/Pagination'
 import * as XLSX from 'xlsx' // Add XLSX import
 
 const FoodOrdersPage = () => {
@@ -34,6 +36,11 @@ const FoodOrdersPage = () => {
     const [loading, setLoading] = useState(false)
     const [orders, setOrders] = useState([])
     const [stats, setStats] = useState({ total: 0, pending: 0, consumed: 0, cancelled: 0 })
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1)
+    const [itemsPerPage, setItemsPerPage] = useState(50)
+    const [totalItems, setTotalItems] = useState(0)
 
     // Filters
     const [stations, setStations] = useState([])
@@ -100,7 +107,7 @@ const FoodOrdersPage = () => {
         if (isModalOpen) {
             loadEmployees()
         }
-    }, [selectedStationId, dateRange, statusFilter, isManager])
+    }, [selectedStationId, dateRange, statusFilter, isManager, currentPage, itemsPerPage])
 
     const loadStations = async () => {
         try {
@@ -283,30 +290,78 @@ const FoodOrdersPage = () => {
                 status: statusFilter || undefined
             }
 
+            const from = (currentPage - 1) * itemsPerPage
+            const to = from + itemsPerPage - 1
+
             let data = []
+            let count = 0
 
             // Si NO es manager, filtrar solo sus pedidos
             if (!isManager) {
-                // Asumimos que user tiene employee_id o id que mapea.
-                // Si no tiene station_id cargado, podría fallar el getAll(selectedStationId).
-                // Usaremos getByEmployee si no es manager? O getAll con filtro.
-                // El servicio tiene getByEmployee. Usémoslo para empleados normales.
-
                 const empId = user?.employee_id || user?.id
                 if (empId) {
-                    data = await foodOrderService.getByEmployee(empId, filters)
-                    updateStats(data)
-                    setOrders(data)
+                    // Build query with pagination
+                    let query = supabase
+                        .from('food_orders')
+                        .select(`
+                            *,
+                            employee:employees(full_name, dni, role_name),
+                            menu:menus(serve_date, options),
+                            station:stations(name)
+                        `, { count: 'exact' })
+                        .eq('employee_id', empId)
+
+                    if (filters.startDate) query = query.gte('menu_date', filters.startDate)
+                    if (filters.endDate) query = query.lte('menu_date', filters.endDate)
+                    if (filters.status) query = query.eq('status', filters.status)
+
+                    query = query
+                        .order('menu_date', { ascending: false })
+                        .range(from, to)
+
+                    const { data: result, error, count: totalCount } = await query
+                    if (error) throw error
+
+                    data = result || []
+                    count = totalCount || 0
                 }
             } else {
-                // Manager View
-                data = await foodOrderService.getAll(selectedStationId, filters)
-                updateStats(data)
-                setOrders(data)
+                // Manager View with pagination
+                let query = supabase
+                    .from('food_orders')
+                    .select(`
+                        *,
+                        employee:employees(full_name, dni, role_name),
+                        menu:menus(serve_date, options),
+                        station:stations(name)
+                    `, { count: 'exact' })
+
+                if (selectedStationId) {
+                    query = query.eq('station_id', selectedStationId)
+                }
+
+                if (filters.startDate) query = query.gte('menu_date', filters.startDate)
+                if (filters.endDate) query = query.lte('menu_date', filters.endDate)
+                if (filters.status) query = query.eq('status', filters.status)
+
+                query = query
+                    .order('menu_date', { ascending: false })
+                    .range(from, to)
+
+                const { data: result, error, count: totalCount } = await query
+                if (error) throw error
+
+                data = result || []
+                count = totalCount || 0
             }
+
+            updateStats(data)
+            setOrders(data)
+            setTotalItems(count)
 
         } catch (error) {
             console.error('Error loading orders:', error)
+            notify.error('Error al cargar pedidos: ' + error.message)
         } finally {
             setLoading(false)
         }
@@ -820,6 +875,21 @@ const FoodOrdersPage = () => {
                     )}
                 </div>
             </div>
+
+            {/* Pagination */}
+            {!loading && totalItems > 0 && (
+                <Pagination
+                    currentPage={currentPage}
+                    totalPages={Math.ceil(totalItems / itemsPerPage)}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={(page) => setCurrentPage(page)}
+                    onItemsPerPageChange={(items) => {
+                        setItemsPerPage(items)
+                        setCurrentPage(1)
+                    }}
+                />
+            )}
 
             {/* Floating Action Button (Mobile Only) */}
             {isManager && (

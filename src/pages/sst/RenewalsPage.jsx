@@ -83,15 +83,20 @@ const RenewalsPage = () => {
   }, [station?.id])
 
   const fetchRenewals = async () => {
-    if (!station?.id) return
-
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      // Optimized: Only select needed fields instead of *
+      let query = supabase
         .from('vw_renewals_pending')
-        .select('*')
-        .eq('station_id', station.id)
+        .select('id, employee_id, full_name, dni, role_name, area, item_id, item_name, item_type, quantity, size, renewal_date, station_id')
         .order('renewal_date', { ascending: true })
+
+      // Only filter by station if one is selected
+      if (station?.id) {
+        query = query.eq('station_id', station.id)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
 
@@ -105,11 +110,8 @@ const RenewalsPage = () => {
   }
 
   const fetchItems = async () => {
-    if (!station?.id) return
-
     try {
-      const data = await eppInventoryService.getAll(station.id)
-
+      const data = await eppInventoryService.getAll(station?.id || null)
       setItems(data || [])
     } catch (error) {
       console.error('Error fetching items:', error)

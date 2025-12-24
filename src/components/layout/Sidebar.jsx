@@ -241,9 +241,10 @@ const Sidebar = ({ isOpen, onClose, onOpen }) => {
 
   useEffect(() => {
     const fetchIdentity = async () => {
+      // Optimized: Only select needed fields instead of *
       const { data } = await supabase
         .from('app_settings')
-        .select('*')
+        .select('key, value')
         .in('key', ['COMPANY_NAME', 'COMPANY_LOGO_URL'])
 
       const name = data?.find(s => s.key === 'COMPANY_NAME')?.value

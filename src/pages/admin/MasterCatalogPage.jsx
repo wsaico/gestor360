@@ -4,6 +4,7 @@ import { useNotification } from '@contexts/NotificationContext'
 import masterProductService from '@services/masterProductService'
 import * as XLSX from 'xlsx' // Needed for manual template if used, though modal handles it too
 import MasterProductImportModal from '@components/admin/MasterProductImportModal'
+import Pagination from '@components/common/Pagination'
 import {
     Plus,
     Search,
@@ -34,7 +35,8 @@ const MasterCatalogPage = () => {
     // Pagination
     const [page, setPage] = useState(1)
     const [totalPages, setTotalPages] = useState(1)
-    const ITEMS_PER_PAGE = 20
+    const [itemsPerPage, setItemsPerPage] = useState(20)
+    const [totalItems, setTotalItems] = useState(0)
 
     // Product Modal State
     const [showModal, setShowModal] = useState(false)
@@ -87,12 +89,13 @@ const MasterCatalogPage = () => {
             setLoading(true)
             const { data, count } = await masterProductService.getProducts({
                 page,
-                limit: ITEMS_PER_PAGE,
+                limit: itemsPerPage,
                 search: searchTerm,
                 typeId: filterType
             })
             setProducts(data || [])
-            setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE))
+            setTotalItems(count || 0)
+            setTotalPages(Math.ceil((count || 0) / itemsPerPage))
         } catch (error) {
             console.error('Fetch products error:', error)
             if (error.message && error.message.includes('404')) {
@@ -310,6 +313,21 @@ const MasterCatalogPage = () => {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Pagination */}
+                {!loading && totalItems > 0 && (
+                    <Pagination
+                        currentPage={page}
+                        totalPages={totalPages}
+                        totalItems={totalItems}
+                        itemsPerPage={itemsPerPage}
+                        onPageChange={(newPage) => setPage(newPage)}
+                        onItemsPerPageChange={(newItemsPerPage) => {
+                            setItemsPerPage(newItemsPerPage)
+                            setPage(1)
+                        }}
+                    />
+                )}
             </div>
 
             {/* PRODUCT MODAL */}

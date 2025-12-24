@@ -584,8 +584,10 @@ const DriverDashboard = () => {
 
         fetchSchedules()
 
-        // Polling every 30s
-        const interval = setInterval(fetchSchedules, 30000)
+        // Polling every 5 minutes (optimized for Supabase free tier)
+        // Previous: 30s = ~2,880 queries/day
+        // Now: 5min = ~288 queries/day (90% reduction)
+        const interval = setInterval(fetchSchedules, 5 * 60 * 1000)
         return () => clearInterval(interval)
     }, [activeDriver])
 

@@ -169,9 +169,10 @@ const InventoryPage = () => {
 
   const fetchSettings = async () => {
     try {
+      // Optimized: Only select needed fields instead of *
       const { data } = await supabase
         .from('app_settings')
-        .select('*')
+        .select('key, value')
         .in('key', ['INVENTORY_VALORIZATION_ENABLED', 'CURRENCY_SYMBOL'])
 
       if (data) {
@@ -202,13 +203,22 @@ const InventoryPage = () => {
       setLoading(true)
       const targetStationId = getEffectiveStationId(selectedStationId)
 
-      const [inventoryData, areasData, categoriesData, employeesData] = await Promise.all([
+      // Load inventory and categories (always)
+      const [inventoryData, categoriesData] = await Promise.all([
         eppInventoryService.getAll(targetStationId),
-        areaService.getAll(targetStationId, true),
-        masterProductService.getCategories(),
-        employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data)
+        masterProductService.getCategories()
       ])
 
+      // Only load areas and employees if we have a station ID
+      let areasData = []
+      let employeesData = []
+
+      if (targetStationId) {
+        [areasData, employeesData] = await Promise.all([
+          areaService.getAll(targetStationId, true),
+          employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data)
+        ])
+      }
 
       setItems(inventoryData || [])
       setAreas(areasData || [])

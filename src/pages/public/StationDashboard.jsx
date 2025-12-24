@@ -32,8 +32,10 @@ export default function StationDashboard() {
         }
         initData()
 
-        // 2. Refresh Interval (every 5 minutes)
-        const interval = setInterval(initData, 5 * 60 * 1000)
+        // 2. Refresh Interval (every 10 minutes - optimized for Supabase free tier)
+        // Previous: 5min = ~288 queries/day
+        // Now: 10min = ~144 queries/day (50% reduction)
+        const interval = setInterval(initData, 10 * 60 * 1000)
         return () => clearInterval(interval)
     }, [stationId])
 

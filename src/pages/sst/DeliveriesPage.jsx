@@ -53,7 +53,8 @@ const DeliveriesPage = () => {
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // For Global Admin station selection
+  const [selectedStationId, setSelectedStationId] = useState(station?.id || null) // Fix: use null instead of empty string
+  const [showFilters, setShowFilters] = useState(false) // Mobile filters toggle
 
   // Settings State
   const [valuationEnabled, setValuationEnabled] = useState(false)
@@ -224,9 +225,10 @@ const DeliveriesPage = () => {
 
   const fetchSettings = async () => {
     try {
+      // Optimized: Only select needed fields instead of *
       const { data } = await supabase
         .from('app_settings')
-        .select('*')
+        .select('key, value')
 
       if (data) {
         // Convert to map for easy access
@@ -272,7 +274,13 @@ const DeliveriesPage = () => {
 
     try {
       setLoading(true)
-      const targetStationId = getEffectiveStationId(selectedStationId)
+      // Fix: Ensure we pass null/undefined instead of string "null"
+      let targetStationId = getEffectiveStationId(selectedStationId)
+
+      // Convert string "null" or empty string to actual null
+      if (targetStationId === 'null' || targetStationId === '' || targetStationId === 'undefined') {
+        targetStationId = null
+      }
 
       // Load Deliveries Paginated
       const { data: deliveriesData, count } = await deliveryService.getPaginated(targetStationId, {
@@ -280,12 +288,27 @@ const DeliveriesPage = () => {
         limit: ITEMS_PER_PAGE
       })
 
-      // Load other resources (cached or full list for dropdowns)
-      const [employeesData, itemsData, areasData] = await Promise.all([
-        employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data),
-        eppInventoryService.getAll(targetStationId),
-        areaService.getAll(targetStationId, true)
-      ])
+      // Load other resources
+      // Always load employees and items for the modal to work
+      // Only load areas if we have a station ID
+      let areasData = []
+      let employeesData = []
+      let itemsData = []
+
+      if (targetStationId) {
+        // Load all resources when station is selected
+        [employeesData, itemsData, areasData] = await Promise.all([
+          employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data),
+          eppInventoryService.getAll(targetStationId),
+          areaService.getAll(targetStationId, true)
+        ])
+      } else {
+        // Load only employees and items when no station (for modal to work)
+        [employeesData, itemsData] = await Promise.all([
+          employeeService.getAll(null, { activeOnly: true }, 1, 1000).then(res => res.data),
+          eppInventoryService.getAll(null)
+        ])
+      }
 
       setDeliveries(deliveriesData || [])
       setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE))
@@ -655,90 +678,91 @@ const DeliveriesPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Entregas de EPPs</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Package className="w-8 h-8 text-primary-600" />
+            Entregas de EPPs
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
             Gestión de entregas con firma digital
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="btn btn-primary btn-md mt-4 sm:mt-0 inline-flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nueva Entrega</span>
-        </button>
-      </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Entregas</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
-            </div>
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
-              <Package className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-          </div>
-        </div>
+        {/* Mobile Filters Toggle & Quick Actions */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex-1 sm:hidden flex items-center justify-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 py-2.5 rounded-xl text-gray-700 dark:text-gray-300 font-bold shadow-sm"
+          >
+            <Filter size={18} className={showFilters ? 'text-primary-600' : ''} />
+            <span>{showFilters ? 'Ocultar Filtros' : 'Filtros'}</span>
+          </button>
 
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Pendientes</p>
-              <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
-            </div>
-            <div className="p-3 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg">
-              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Firmadas</p>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.signed}</p>
-            </div>
-            <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Canceladas</p>
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.cancelled}</p>
-            </div>
-            <div className="p-3 bg-red-100 dark:bg-red-900/40 rounded-lg">
-              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-            </div>
+          <div className="hidden sm:flex gap-2">
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
+            >
+              <Plus size={20} />
+              <span className="font-medium">Nueva Entrega</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="card p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Buscar por empleado, DNI o código de documento..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-10 w-full"
-          />
-        </div>
+      {/* Stats Cards - Horizontal Scroll on Mobile */}
+      <div className="flex sm:grid sm:grid-cols-4 gap-4 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide snap-x">
+        {[
+          { label: 'Total', value: stats.total, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20', icon: Package },
+          { label: 'Pendientes', value: stats.pending, color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/20', icon: Clock },
+          { label: 'Firmadas', value: stats.signed, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20', icon: CheckCircle },
+          { label: 'Canceladas', value: stats.cancelled, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', icon: AlertCircle },
+        ].map((stat, i) => {
+          const Icon = stat.icon
+          return (
+            <div key={i} className={`min-w-[140px] flex-1 card ${stat.bg} p-4 !border-none snap-center`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className={`block text-2xl font-bold ${stat.color}`}>{stat.value}</span>
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">{stat.label}</span>
+                </div>
+                <div className={`p-2 ${stat.bg} rounded-lg`}>
+                  <Icon className={`w-5 h-5 ${stat.color}`} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
+
+      {/* Search - Collapsible on Mobile */}
+      <AnimatePresence>
+        {(showFilters || window.innerWidth >= 640) && (
+          <motion.div
+            initial={window.innerWidth < 640 ? { height: 0, opacity: 0, marginBottom: 0 } : false}
+            animate={{ height: 'auto', opacity: 1, marginBottom: 24 }}
+            exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+            className="card p-4 overflow-hidden"
+          >
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Buscar por empleado, DNI o código de documento..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input pl-10 w-full"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Table */}
       <div className="gestor-table-container">
-        <div className="overflow-x-auto">
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="gestor-table">
             <thead className="gestor-thead">
               <tr>
@@ -846,7 +870,115 @@ const DeliveriesPage = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-4 p-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+              <Clock className="w-8 h-8 animate-spin mb-4" />
+              <p>Cargando entregas...</p>
+            </div>
+          ) : filteredDeliveries.length === 0 ? (
+            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-100 dark:border-gray-700">
+              <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">No hay entregas registradas.</p>
+            </div>
+          ) : (
+            filteredDeliveries.map((delivery) => (
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={delivery.id}
+                className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 font-bold">
+                      {delivery.employee?.full_name?.charAt(0) || 'E'}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white leading-tight">{delivery.employee?.full_name}</p>
+                      <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tight">DNI: {delivery.employee?.dni}</p>
+                    </div>
+                  </div>
+                  {getStatusBadge(delivery.status)}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 py-3 border-t border-b border-gray-50 dark:border-gray-700/50">
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Fecha</p>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      {new Date(delivery.delivery_date).toLocaleDateString('es-PE')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Código</p>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 font-mono">{delivery.document_code}</p>
+                  </div>
+                </div>
+
+                {/* Items Preview */}
+                <div className="bg-gray-50 dark:bg-gray-900/30 p-2 rounded-lg">
+                  <p className="text-xs text-gray-500 mb-1">Items entregados ({delivery.items?.length || 0}):</p>
+                  <div className="flex flex-wrap gap-1">
+                    {delivery.items?.slice(0, 3).map((item, idx) => (
+                      <span key={idx} className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
+                        {item.item_name} ({item.quantity})
+                      </span>
+                    ))}
+                    {delivery.items?.length > 3 && (
+                      <span className="text-xs text-gray-400">+{delivery.items.length - 3} más</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  {delivery.status === 'PENDING' && (
+                    <button
+                      onClick={() => handleStartSigning(delivery)}
+                      className="flex-1 bg-primary-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-primary-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <PenTool className="w-5 h-5" />
+                      <span>Firmar</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleViewDetails(delivery)}
+                    className="p-3 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl"
+                  >
+                    <Eye size={20} />
+                  </button>
+                  {delivery.status === 'SIGNED' && (
+                    <button
+                      onClick={() => handleViewPDF(delivery)}
+                      className="p-3 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl"
+                    >
+                      <FileText size={20} />
+                    </button>
+                  )}
+                  {delivery.status === 'PENDING' && (
+                    <button
+                      onClick={() => handleDelete(delivery)}
+                      className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-xl"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Floating Action Button (Mobile Only) */}
+      <button
+        onClick={() => setShowModal(true)}
+        className="sm:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform"
+      >
+        <Plus size={32} />
+      </button>
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
