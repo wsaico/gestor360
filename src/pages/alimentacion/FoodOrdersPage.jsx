@@ -525,7 +525,7 @@ const FoodOrdersPage = () => {
                     {isManager && (
                         <div className="hidden sm:flex gap-2">
                             {/* Provider should not see Manual Order or Audit */}
-                            {!hasRole(ROLES.PROVIDER) && (
+                            {user?.role !== 'PROVIDER' && (
                                 <>
                                     <button
                                         onClick={openManualOrder}
@@ -897,7 +897,8 @@ const FoodOrdersPage = () => {
             )}
 
             {/* Floating Action Button (Mobile Only) */}
-            {isManager && (
+            {/* Floating Action Button (Mobile Only) - Hide for Provider */}
+            {isManager && user?.role !== 'PROVIDER' && (
                 <button
                     onClick={openManualOrder}
                     className="sm:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform"
