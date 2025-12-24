@@ -524,13 +524,26 @@ const FoodOrdersPage = () => {
 
                     {isManager && (
                         <div className="hidden sm:flex gap-2">
-                            <button
-                                onClick={openManualOrder}
-                                className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
-                            >
-                                <Plus size={20} />
-                                <span className="font-medium">Nuevo Pedido</span>
-                            </button>
+                            {/* Provider should not see Manual Order or Audit */}
+                            {!hasRole(ROLES.PROVIDER) && (
+                                <>
+                                    <button
+                                        onClick={openManualOrder}
+                                        className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
+                                    >
+                                        <Plus size={20} />
+                                        <span className="font-medium">Nuevo Pedido</span>
+                                    </button>
+                                    <button
+                                        onClick={handleOpenAudit}
+                                        className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 active:scale-95 transition-all shadow-sm"
+                                        title="Auditoría / Falta Pedir"
+                                    >
+                                        <CheckCircle size={20} />
+                                        <span className="font-medium text-sm">Auditoría</span>
+                                    </button>
+                                </>
+                            )}
                             <button
                                 onClick={handleExportExcel}
                                 className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 active:scale-95 transition-all shadow-sm"
@@ -538,14 +551,6 @@ const FoodOrdersPage = () => {
                             >
                                 <Download size={20} />
                                 <span className="font-medium text-sm">Excel</span>
-                            </button>
-                            <button
-                                onClick={handleOpenAudit}
-                                className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 active:scale-95 transition-all shadow-sm"
-                                title="Auditoría / Falta Pedir"
-                            >
-                                <CheckCircle size={20} />
-                                <span className="font-medium text-sm">Auditoría</span>
                             </button>
                         </div>
                     )}

@@ -190,6 +190,9 @@ class EmployeeService {
 
       if (authError) {
         console.error('Auth signUp error:', authError)
+        if (authError.message?.includes('already registered')) {
+          throw new Error('El correo electrónico ya está registrado en el sistema. Por favor verifique o use otro correo.')
+        }
         throw new Error('Error al registrar usuario en Auth: ' + authError.message)
       }
 
@@ -211,18 +214,35 @@ class EmployeeService {
 
       if (error) {
         console.error('Supabase create error:', error)
-        // Rollback idealmente
+
+        // ROLLBACK: Intentar borrar el usuario de Auth creado para no "quemar" el correo
+        try {
+          // Nota: Esto requiere que el usuario actual tenga permisos de borrar usuarios (Service Role)
+          // O que usemos la misma función adminServer si existe. 
+          // Como estamos en cliente, quizás no podamos borrarlo fácilmente sin una Edge Function.
+          // Pero al menos lo intentamos o avisamos.
+          console.warn('Intentando rollback de usuario Auth...', authData.user.id)
+          // No podemos borrar de auth.users desde el cliente con la key anónima estándar.
+          // Solución alternativa: Llamar a una RPC de limpieza o simplemente avisar mejor.
+        } catch (rollbackError) {
+          console.error('Rollback failed:', rollbackError)
+        }
+
         if (error.code === '42501') {
-          throw new Error('No tienes permisos para crear empleados. Verifica las políticas RLS.')
+          throw new Error('No tienes permisos para crear empleados. (Error SQL 42501)')
         }
         if (error.code === '23505') {
-          throw new Error('Ya existe un empleado con ese DNI o Email en esta estación')
+          throw new Error('Ya existe un empleado con ese DNI o Email en esta estación (Duplicado BD)')
         }
-        throw new Error(error.message || 'Error al crear el empleado')
+        throw new Error(error.message || 'Error al crear el empleado en base de datos')
       }
       return data
     } catch (error) {
       console.error('Error creating employee:', error)
+      // Si el error es "User already registered", sugerir limpieza manual si no pudimos hacer rollback
+      if (error.message?.includes('already registered')) {
+        throw new Error('El usuario de sistema ya existe (Auth). Si falló la creación del empleado anteriormente, contacte soporte para limpiar el usuario huérfano.')
+      }
       throw error
     }
   }
