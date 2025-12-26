@@ -82,7 +82,7 @@ const PublicMenuPage = () => {
 
     const [orderType] = useState(ORDER_TYPES.NORMAL)
     const [discountPercent] = useState(0)
-    const [orderSuccess] = useState(false)
+    const [orderSuccess, setOrderSuccess] = useState(false)
     const [diningOption, setDiningOption] = useState(null) // Dining option state - null until user selects
     const [showSuggestions, setShowSuggestions] = useState(false) // Collapsible suggestions
 
