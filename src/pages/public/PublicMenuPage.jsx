@@ -458,7 +458,7 @@ const PublicMenuPage = () => {
             }
 
             const orderData = {
-                station_id: station?.id || stationId,
+                station_id: station?.id || employee?.station_id,
                 employee_id: employee.id || employee.employee_id,
                 menu_id: selectedMenu.id,
                 menu_date: selectedMenu.serve_date,
@@ -507,13 +507,13 @@ const PublicMenuPage = () => {
             setCurrentStep(STEPS.CONFIRMATION)
 
             // Refresh orders to show the new one if they go back
-            loadStationData(station?.id || stationId, employee.role_name, employee.id)
+            loadStationData(station?.id || employee?.station_id, employee.role_name, employee.id)
 
         } catch (err) {
             console.error(err)
             if (err.message.includes('Ya realizaste un pedido') || err.message.includes('unique') || err.message.includes('conflict')) {
                 // If duplicate, refresh data to show the alert and notify user
-                await loadStationData(station?.id || stationId, employee.role_name, employee.id)
+                await loadStationData(station?.id || employee?.station_id, employee.role_name, employee.id)
                 setError('⚠️ Ya existe un pedido registrado para esta fecha. Hemos actualizado la información.')
             } else {
                 setError('Error al crear el pedido: ' + (err.message || 'Error desconocido'))
@@ -739,6 +739,28 @@ const PublicMenuPage = () => {
                                 )
                             })}
                         </div>
+
+                        {/* Error Alert in Step 1 */}
+                        {error && (
+                            <div className="mx-4 mt-4 animate-fade-in-down">
+                                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-md">
+                                    <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                        <h3 className="text-sm font-bold text-red-800">Ha ocurrido un error</h3>
+                                        <p className="text-sm text-red-700 mt-1 leading-relaxed">{error}</p>
+                                        <button
+                                            onClick={() => window.location.reload()}
+                                            className="mt-2 text-xs font-bold text-red-600 underline hover:text-red-800"
+                                        >
+                                            Recargar página
+                                        </button>
+                                    </div>
+                                    <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Content */}
                         <div className="p-4 space-y-6 pb-48">
