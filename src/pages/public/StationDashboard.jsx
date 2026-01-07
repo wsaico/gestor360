@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { publicDashboardService } from '@services/publicDashboardService'
 import { announcementService } from '@services/announcementService'
+import { supabase } from '@services/supabase'
 import AnnouncementsCarousel from '@components/dashboard/AnnouncementsCarousel'
 import StationAlertsWidget from '@components/dashboard/StationAlertsWidget'
 import FlipClock from '@components/dashboard/FlipClock'
@@ -17,7 +18,9 @@ export default function StationDashboard() {
         async function initData() {
             if (!stationId) return
             try {
-                setLoading(true)
+                // Only set loading on first load to avoid flickering
+                if (announcements.length === 0) setLoading(true)
+
                 const [annData, alertData] = await Promise.all([
                     announcementService.getPublicAnnouncements(stationId, 'BOARD'),
                     publicDashboardService.getStationAlerts(stationId)
@@ -32,11 +35,27 @@ export default function StationDashboard() {
         }
         initData()
 
-        // 2. Refresh Interval (every 10 minutes - optimized for Supabase free tier)
-        // Previous: 5min = ~288 queries/day
-        // Now: 10min = ~144 queries/day (50% reduction)
+        // 2. Realtime Subscription (New!)
+        // Listen for ANY change in 'announcements' table
+        const channel = supabase
+            .channel('dashboard-announcements')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'announcements' },
+                (payload) => {
+                    console.log('Realtime Update:', payload)
+                    initData()
+                }
+            )
+            .subscribe()
+
+        // 3. Refresh Interval (Fallback every 10 mins)
         const interval = setInterval(initData, 10 * 60 * 1000)
-        return () => clearInterval(interval)
+
+        return () => {
+            clearInterval(interval)
+            supabase.removeChannel(channel)
+        }
     }, [stationId])
 
     const toggleFullScreen = () => {

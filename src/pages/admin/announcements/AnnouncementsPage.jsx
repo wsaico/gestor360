@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { announcementService } from '@services/announcementService'
+import { supabase } from '@services/supabase'
 import { Plus, Trash2, Edit, Video, Image as ImageIcon, Type, ExternalLink, Upload, Loader2, FileText } from 'lucide-react'
 import { ANNOUNCEMENT_TARGETS, ANNOUNCEMENT_TARGET_LABELS } from '@utils/constants'
 
@@ -26,6 +27,18 @@ export default function AnnouncementsPage() {
 
     useEffect(() => {
         fetchAnnouncements()
+
+        // Realtime Subscription
+        const channel = supabase
+            .channel('admin-announcements')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => {
+                fetchAnnouncements()
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
     }, [])
 
     const fetchAnnouncements = async () => {

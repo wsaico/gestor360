@@ -12,7 +12,8 @@ import {
   Plus,
   Download,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react'
 import { formatDate, calculateDocumentStatus } from '@utils/helpers'
 import {
