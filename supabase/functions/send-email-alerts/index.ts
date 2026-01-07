@@ -237,10 +237,9 @@ serve(async (req) => {
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // 3. COLLECT ALERTS
-        let allAlerts = [];
+        // 3. COLLECT ALERTS AND SEND INDITIVUAL NOTIFICATIONS
 
-        // --- A. EPP Renewals ---
+        // --- A. EPP Renewals (Supervisor Only) ---
         if (isEnabled("ENABLE_ALERT_EPPS")) {
             const { data: epps } = await supabaseClient
                 .from("vw_renewals_pending")
@@ -248,6 +247,7 @@ serve(async (req) => {
                 .lt("days_until_renewal", 30);
 
             if (epps) {
+                // EPP alerts go to Supervisor Summary (collected in allAlerts below)
                 allAlerts.push(...epps.map(e => ({
                     station_id: e.station_id,
                     type: 'RENOVACIÓN EPP',
@@ -258,7 +258,7 @@ serve(async (req) => {
             }
         }
 
-        // --- B. Low Stock ---
+        // --- B. Low Stock (Supervisor Only) ---
         if (isEnabled("ENABLE_ALERT_LOW_STOCK")) {
             const { data: allItems } = await supabaseClient
                 .from("epp_items")
@@ -267,7 +267,6 @@ serve(async (req) => {
 
             if (allItems) {
                 const lowStock = allItems.filter(i => i.stock_current <= i.stock_min);
-                console.log(`Found ${lowStock.length} low stock items out of ${allItems.length} total active items.`);
                 allAlerts.push(...lowStock.map(i => ({
                     station_id: i.station_id,
                     type: 'STOCK CRÍTICO',
@@ -276,34 +275,36 @@ serve(async (req) => {
                     urgent: true
                 })));
             }
-
         }
 
-        // --- C. Birthdays ---
+        // --- C. Birthdays (BROADCAST TO ALL USERS) ---
         if (isEnabled("ENABLE_ALERT_BIRTHDAYS")) {
             const { data: employees } = await supabaseClient
                 .from("employees")
-                .select("id, full_name, birth_date, station_id")
+                .select("id, full_name, birth_date, station_id, email")
                 .neq("status", "CESADO")
                 .not("birth_date", "is", null);
 
             if (employees) {
                 const today = new Date();
-                const nextWeek = new Date();
-                nextWeek.setDate(today.getDate() + 7);
+                const upcomingBirthdays = [];
 
                 employees.forEach(emp => {
                     const dob = new Date(emp.birth_date);
-                    // Set current year
                     dob.setFullYear(today.getFullYear());
-                    // Handle year wrap for December
                     if (dob < today && (today.getMonth() !== dob.getMonth() || today.getDate() !== dob.getDate())) {
                         dob.setFullYear(today.getFullYear() + 1);
                     }
-
                     const diffDays = Math.ceil((dob.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
                     if (diffDays >= 0 && diffDays <= 7) {
+                        upcomingBirthdays.push({
+                            name: emp.full_name,
+                            date: formatDate(emp.birth_date),
+                            isToday: diffDays === 0
+                        });
+
+                        // Add to Supervisor Summary
                         allAlerts.push({
                             station_id: emp.station_id,
                             type: 'CUMPLEAÑOS',
@@ -313,41 +314,111 @@ serve(async (req) => {
                         });
                     }
                 });
+
+                // BROADCAST: Send to ALL system users
+                if (upcomingBirthdays.length > 0) {
+                    const { data: allUsers } = await supabaseClient.from("system_users").select("email, first_name");
+
+                    if (allUsers && allUsers.length > 0) {
+                        const bdayHtml = generateEmailTemplate(
+                            "🎉 Cumpleaños de la Semana",
+                            `<p>¡Celebremos a nuestros compañeros!</p>
+                             <div class="alert-group">
+                                <ul class="alert-list">
+                                    ${upcomingBirthdays.map(b => `
+                                        <li class="alert-item" style="border-left-color: #f59e0b;">
+                                            <span class="main-text">${b.name}</span>
+                                            <span class="meta-text" style="color: #d97706; font-weight:bold;">${b.isToday ? '¡HOY!' : b.date}</span>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                             </div>`,
+                            settingsMap
+                        );
+
+                        // Batch or Loop send (Loop for simplicity/reliability with Brevo API)
+                        // Note: In high volume, use Brevo template + recipient list
+                        console.log(`Broadcasting Birthday Alert to ${allUsers.length} users.`);
+                        for (const user of allUsers) {
+                            if (!user.email) continue;
+                            // Fire and forget fetch to speed up? No, Deno runtime might kill it if we don't await. 
+                            await fetch("https://api.brevo.com/v3/smtp/email", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", "api-key": brevoKey },
+                                body: JSON.stringify({
+                                    sender: { email: senderEmail, name: "Gestor360 Social" },
+                                    to: [{ email: user.email, name: user.first_name }],
+                                    subject: `[Gestor360] 🎉 Cumpleaños: ${upcomingBirthdays[0].name} ${upcomingBirthdays.length > 1 ? `y ${upcomingBirthdays.length - 1} más` : ''}`,
+                                    htmlContent: bdayHtml,
+                                }),
+                            }).catch(err => console.error("Error sending broadcast:", err));
+                        }
+                    }
+                }
             }
         }
 
-        // --- D. Documents (EMO & Photocheck) ---
+        // --- D. Documents (INDIVIDUAL EMAIL + SUPERVISOR SUMMARY) ---
         if (isEnabled("ENABLE_ALERT_EMO") || isEnabled("ENABLE_ALERT_PHOTOCHECK")) {
-            // Fetch all docs expiring in next 30 days
             const today = new Date();
             const thirtyDays = new Date();
             thirtyDays.setDate(today.getDate() + 30);
 
             const { data: docs } = await supabaseClient
                 .from("employee_docs")
-                .select("*, employee:employees(full_name, station_id, status)")
-                .in("document_type", ["EMO", "PHOTOCHECK"])
-                .gte("expiry_date", today.toISOString().split('T')[0]) // Not already expired (optional, maybe we want expired too)
+                .select("*, employee:employees(full_name, station_id, status, email)")
+                .in("document_type", ["EMO", "PHOTOCHECK", "FOTOCHECK"]) // Added FOTOCHECK
+                .gte("expiry_date", today.toISOString().split('T')[0])
                 .lte("expiry_date", thirtyDays.toISOString().split('T')[0]);
 
             if (docs) {
-                docs.forEach(doc => {
-                    // Filter inactive employees logic if needed (assumed checked by status)
-                    if (doc.employee?.status === 'CESADO') return;
+                for (const doc of docs) { // Using for..of to await properly if needed
+                    if (doc.employee?.status === 'CESADO') continue;
 
-                    const typeLabel = doc.document_type === 'EMO' ? 'EXAMEN MÉDICO' : 'FOTOCHECK';
-                    const isEnabledType = doc.document_type === 'EMO' ? isEnabled("ENABLE_ALERT_EMO") : isEnabled("ENABLE_ALERT_PHOTOCHECK");
+                    const typeLabel = (doc.document_type === 'EMO') ? 'EXAMEN MÉDICO' : 'FOTOCHECK';
+                    const isEnabledType = (doc.document_type === 'EMO') ? isEnabled("ENABLE_ALERT_EMO") : isEnabled("ENABLE_ALERT_PHOTOCHECK");
 
                     if (isEnabledType) {
+                        // 1. Add to Supervisor Key Summary
                         allAlerts.push({
                             station_id: doc.employee?.station_id,
                             type: `VENCIMIENTO ${typeLabel}`,
                             text: doc.employee?.full_name,
                             meta: `Vence: ${formatDate(doc.expiry_date)}`,
-                            urgent: false // Could calculate urgency based on date
+                            urgent: false
                         });
+
+                        // 2. Send INDIVIDUAL Email
+                        if (doc.employee?.email) {
+                            const userHtml = generateEmailTemplate(
+                                `⚠️ Vencimiento de ${typeLabel}`,
+                                `<p>Hola <strong>${doc.employee.full_name}</strong>,</p>
+                                 <p>Tu documento <strong>${typeLabel}</strong> está próximo a vencer.</p>
+                                 <div class="alert-group">
+                                    <ul class="alert-list">
+                                        <li class="alert-item">
+                                            <span class="main-text">Fecha de Vencimiento</span>
+                                            <span class="meta-text urgent">${formatDate(doc.expiry_date)}</span>
+                                        </li>
+                                    </ul>
+                                 </div>
+                                 <p>Por favor, gestiona la renovación lo antes posible con RRHH.</p>`,
+                                settingsMap
+                            );
+
+                            await fetch("https://api.brevo.com/v3/smtp/email", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", "api-key": brevoKey },
+                                body: JSON.stringify({
+                                    sender: { email: senderEmail, name: "Gestor360 Alertas" },
+                                    to: [{ email: doc.employee.email, name: doc.employee.full_name }],
+                                    subject: `[Gestor360] ⚠️ Tu ${typeLabel} vence pronto`,
+                                    htmlContent: userHtml,
+                                }),
+                            }).catch(e => console.error("Error sending individual doc alert:", e));
+                        }
                     }
-                });
+                }
             }
         }
 
