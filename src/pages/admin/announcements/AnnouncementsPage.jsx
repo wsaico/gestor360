@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { announcementService } from '@services/announcementService'
-import { Plus, Trash2, Edit, Video, Image as ImageIcon, Type, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Edit, Video, Image as ImageIcon, Type, ExternalLink, Upload, Loader2, FileText } from 'lucide-react'
 import { ANNOUNCEMENT_TARGETS, ANNOUNCEMENT_TARGET_LABELS } from '@utils/constants'
 
 export default function AnnouncementsPage() {
     const [announcements, setAnnouncements] = useState([])
     const [loading, setLoading] = useState(true)
+    const [uploading, setUploading] = useState(false)
     const [error, setError] = useState(null)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingItem, setEditingItem] = useState(null)
@@ -47,6 +48,23 @@ export default function AnnouncementsPage() {
             setAnnouncements(prev => prev.filter(a => a.id !== id))
         } catch (err) {
             alert(err.message)
+        }
+    }
+
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+
+        try {
+            setUploading(true)
+            const url = await announcementService.uploadMedia(file)
+            const type = file.type.includes('pdf') ? 'pdf' : 'image'
+            setFormData(prev => ({ ...prev, media_url: url, media_type: type }))
+        } catch (err) {
+            console.error(err)
+            alert('Error al subir archivo')
+        } finally {
+            setUploading(false)
         }
     }
 
@@ -238,36 +256,110 @@ export default function AnnouncementsPage() {
 
                             <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
                                 <label className="block text-sm font-medium mb-2 dark:text-gray-300">Multimedia</label>
-                                <div className="flex gap-4 mb-2">
-                                    {['text', 'image', 'video'].map(type => (
-                                        <label key={type} className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="mediaType"
-                                                checked={formData.media_type === type}
-                                                onChange={() => setFormData({ ...formData, media_type: type })}
-                                            />
-                                            <span className="capitalize dark:text-gray-300">{type === 'image' ? 'Imagen' : type === 'video' ? 'Video' : 'Solo Texto'}</span>
-                                        </label>
-                                    ))}
+                                <div className="flex gap-4 mb-3">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="mediaType"
+                                            checked={formData.media_type === 'text'}
+                                            onChange={() => setFormData({ ...formData, media_type: 'text', media_url: '' })}
+                                        />
+                                        <span className="dark:text-gray-300">Solo Texto</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="mediaType"
+                                            checked={formData.media_type === 'image' || formData.media_type === 'pdf'}
+                                            onChange={() => setFormData({ ...formData, media_type: 'image' })} // Default to image, handles pdf on upload
+                                        />
+                                        <span className="dark:text-gray-300">Imagen / PDF</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="mediaType"
+                                            checked={formData.media_type === 'video'}
+                                            onChange={() => setFormData({ ...formData, media_type: 'video', media_url: '' })}
+                                        />
+                                        <span className="dark:text-gray-300">Video (YouTube)</span>
+                                    </label>
                                 </div>
 
-                                {formData.media_type !== 'text' && (
+                                {/* FILE UPLOAD AREA (Image/PDF) */}
+                                {(formData.media_type === 'image' || formData.media_type === 'pdf') && (
+                                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                                        {uploading ? (
+                                            <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400">
+                                                <Loader2 className="animate-spin" />
+                                                <span className="text-sm font-medium">Subiendo archivo...</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {!formData.media_url ? (
+                                                    <div className="flex flex-col items-center justify-center gap-2 cursor-pointer relative">
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*,application/pdf"
+                                                            onChange={handleFileUpload}
+                                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                                        />
+                                                        <Upload className="text-gray-400" />
+                                                        <p className="text-sm text-gray-500 dark:text-gray-300">Haz clic o arrastra una imagen o PDF aquí</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/30 p-2 rounded border border-blue-100 dark:border-blue-800">
+                                                        <div className="flex items-center gap-3">
+                                                            {formData.media_type === 'pdf' ? (
+                                                                <FileText className="text-red-500" />
+                                                            ) : (
+                                                                <img
+                                                                    src={formData.media_url}
+                                                                    alt="Preview"
+                                                                    className="w-10 h-10 object-cover rounded"
+                                                                />
+                                                            )}
+                                                            <div className="text-sm truncate max-w-[200px] dark:text-gray-200">
+                                                                <span className="font-medium block">
+                                                                    {formData.media_type === 'pdf' ? 'Documento PDF' : 'Imagen Adjunta'}
+                                                                </span>
+                                                                <a href={formData.media_url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 text-xs hover:underline">
+                                                                    Ver archivo
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, media_url: '', media_type: 'image' }))}
+                                                            className="p-1 hover:bg-red-100 text-red-500 rounded transition-colors"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* VIDEO URL INPUT */}
+                                {formData.media_type === 'video' && (
                                     <div>
-                                        <label className="text-xs text-gray-500 mb-1 block">URL del archivo (Supabase Storage o Externo)</label>
+                                        <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">URL de YouTube</label>
                                         <div className="flex gap-2">
                                             <input
                                                 required
-                                                placeholder="https://..."
+                                                placeholder="https://youtube.com/..."
                                                 value={formData.media_url}
                                                 onChange={e => setFormData({ ...formData, media_url: e.target.value })}
                                                 className="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
                                             />
-                                            <a href={formData.media_url || '#'} target="_blank" rel="noopener noreferrer" className="p-2 bg-gray-200 dark:bg-gray-600 rounded text-gray-600 dark:text-gray-300">
-                                                <ExternalLink size={20} />
-                                            </a>
+                                            {formData.media_url && (
+                                                <a href={formData.media_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-gray-200 dark:bg-gray-600 rounded text-gray-600 dark:text-gray-300">
+                                                    <ExternalLink size={20} />
+                                                </a>
+                                            )}
                                         </div>
-                                        <p className="text-xs text-blue-500 mt-1">Tip: Copia la URL pública de tu bucket o de YouTube.</p>
                                     </div>
                                 )}
                             </div>

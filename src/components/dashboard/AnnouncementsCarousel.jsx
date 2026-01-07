@@ -7,6 +7,7 @@ export default function AnnouncementsCarousel({ items = [] }) {
     const [isPaused, setIsPaused] = useState(false)
 
     // Auto-play Logic (Only active in Carousel mode)
+    // Auto-play Logic (Only active in Carousel mode)
     useEffect(() => {
         if (isPaused || viewMode === 'mural') return
 
@@ -20,6 +21,39 @@ export default function AnnouncementsCarousel({ items = [] }) {
 
         return () => clearTimeout(timer)
     }, [currentIndex, items, isPaused, viewMode])
+
+    // Wake Lock Logic (Prevent Screen Sleep)
+    useEffect(() => {
+        let wakeLock = null;
+
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator && viewMode === 'carousel') {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock active: Screen will not sleep');
+                } catch (err) {
+                    console.error(`Wake Lock error: ${err.name}, ${err.message}`);
+                }
+            }
+        };
+
+        requestWakeLock();
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && viewMode === 'carousel') {
+                requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            if (wakeLock) {
+                wakeLock.release().then(() => console.log('Wake Lock released'));
+            }
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [viewMode]);
 
     const currentItem = items[currentIndex]
 

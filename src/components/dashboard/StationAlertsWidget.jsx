@@ -26,7 +26,7 @@ export default function StationAlertsWidget({ data }) {
             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                 <div className="flex items-center gap-2 mb-2 text-purple-300">
                     <Calendar size={18} />
-                    <span className="font-bold uppercase text-sm tracking-wide">Cumpleaños del Mes</span>
+                    <span className="font-bold uppercase text-sm tracking-wide">Próximos Cumpleaños</span>
                     <span className="bg-purple-500/20 text-purple-300 text-xs px-2 py-0.5 rounded-full">{birthdays.length}</span>
                 </div>
 
@@ -65,7 +65,7 @@ export default function StationAlertsWidget({ data }) {
 
 function AutoScrollList({ items, type }) {
     // If few items, no need to scroll
-    if (items.length <= 3) {
+    if (items.length <= 2) {
         return (
             <div className="flex flex-col gap-3">
                 {items.map((item, idx) => (

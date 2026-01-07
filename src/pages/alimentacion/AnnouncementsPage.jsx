@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Trash2, Edit, Calendar, Info, Save, X, Megaphone, CheckCircle, ArrowRight } from 'lucide-react'
+import { Plus, Trash2, Edit, Calendar, Info, Save, X, Megaphone, CheckCircle, ArrowRight, Upload, Image as ImageIcon, FileText, Loader2 } from 'lucide-react'
 import { announcementService } from '../../services/announcementService'
 import stationService from '../../services/stationService'
 import { formatDate } from '../../utils/helpers'
@@ -16,8 +16,11 @@ const AnnouncementsPage = () => {
         end_date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
         is_active: true,
         station_id: '', // Empty for Global
-        display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK] // Default: all
+        display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK], // Default: all
+        media_url: '',
+        media_type: 'text'
     })
+    const [uploading, setUploading] = useState(false)
     const [stations, setStations] = useState([]) // For selector
     const [editingId, setEditingId] = useState(null)
     const [error, setError] = useState(null)
@@ -95,10 +98,29 @@ const AnnouncementsPage = () => {
             end_date: announcement.end_date,
             is_active: announcement.is_active,
             station_id: announcement.station_id || '',
-            display_targets: announcement.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
+            display_targets: announcement.display_targets || [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK],
+            media_url: announcement.media_url || '',
+            media_type: announcement.media_type || 'text'
         })
         setEditingId(announcement.id)
         setIsModalOpen(true)
+    }
+
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+
+        try {
+            setUploading(true)
+            const url = await announcementService.uploadMedia(file)
+            const type = file.type.includes('pdf') ? 'pdf' : 'image'
+            setFormData(prev => ({ ...prev, media_url: url, media_type: type }))
+        } catch (err) {
+            console.error(err)
+            alert('Error al subir archivo')
+        } finally {
+            setUploading(false)
+        }
     }
 
     const openCreateModal = () => {
@@ -110,7 +132,9 @@ const AnnouncementsPage = () => {
             end_date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
             is_active: true,
             station_id: '',
-            display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK]
+            display_targets: [ANNOUNCEMENT_TARGETS.BOARD, ANNOUNCEMENT_TARGETS.FOOD_KIOSK, ANNOUNCEMENT_TARGETS.DRIVER_KIOSK],
+            media_url: '',
+            media_type: 'text'
         })
         setIsModalOpen(true)
     }
@@ -287,6 +311,7 @@ const AnnouncementsPage = () => {
                             </div>
 
                             {/* Display Targets Selection */}
+                            {/* Display Targets Selection */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     ¿Dónde se mostrará este anuncio?
@@ -340,6 +365,64 @@ const AnnouncementsPage = () => {
                                 <p className="text-xs text-gray-500 mt-2">
                                     Selecciona al menos una opción
                                 </p>
+                            </div>
+
+                            {/* Media Upload */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Adjuntar Imagen o PDF (Opcional)</label>
+                                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                    {uploading ? (
+                                        <div className="flex items-center justify-center gap-2 text-orange-600">
+                                            <Loader2 className="animate-spin" />
+                                            <span className="text-sm font-medium">Subiendo archivo...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {!formData.media_url ? (
+                                                <div className="flex flex-col items-center justify-center gap-2 cursor-pointer relative">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*,application/pdf"
+                                                        onChange={handleFileUpload}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    />
+                                                    <Upload className="text-gray-400" />
+                                                    <p className="text-sm text-gray-500">Haz clic o arrastra un archivo aquí</p>
+                                                    <p className="text-xs text-gray-400">Soporta JPG, PNG, PDF</p>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-between bg-orange-50 p-2 rounded border border-orange-100">
+                                                    <div className="flex items-center gap-3">
+                                                        {formData.media_type === 'pdf' ? (
+                                                            <FileText className="text-red-500" />
+                                                        ) : (
+                                                            <img
+                                                                src={formData.media_url}
+                                                                alt="Preview"
+                                                                className="w-10 h-10 object-cover rounded"
+                                                            />
+                                                        )}
+                                                        <div className="text-sm truncate max-w-[200px]">
+                                                            <span className="font-medium text-gray-700 block">
+                                                                {formData.media_type === 'pdf' ? 'Documento PDF' : 'Imagen Adjunta'}
+                                                            </span>
+                                                            <a href={formData.media_url} target="_blank" rel="noreferrer" className="text-orange-600 text-xs hover:underline">
+                                                                Ver archivo actual
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, media_url: '', media_type: 'text' }))}
+                                                        className="p-1 hover:bg-red-100 text-red-500 rounded"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-2 pt-2">
