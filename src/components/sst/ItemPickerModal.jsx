@@ -1,79 +1,114 @@
 import { useState, useMemo } from 'react'
-import { Search, X, Package, Ruler, AlertCircle, Check, Map } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Search, Package, Filter, AlertTriangle, Plus, PlusCircle, Star, Briefcase } from 'lucide-react'
 
 const ItemPickerModal = ({
     show,
     onClose,
+    onSelect,
     items = [],
     areas = [],
-    onSelect
+    recommendedAreaId = null,
+    cartItems = [], // Items already in the delivery cart
+    onCreateItem,
+    onAddStock
 }) => {
     const [searchTerm, setSearchTerm] = useState('')
-    const [filterArea, setFilterArea] = useState('')
+    // Initialize filter with recommended area to enforce default filtering
+    const [filterArea, setFilterArea] = useState(recommendedAreaId || '')
 
-    // Reset filters when modal opens/closes
+    console.log('ItemPickerModal Props:', { onCreateItem: !!onCreateItem, onAddStock: !!onAddStock, recommendedAreaId })
 
+    // Update filterArea when recommendedAreaId changes (e.g., when picking a different employee)
+    useMemo(() => {
+        if (recommendedAreaId) {
+            setFilterArea(recommendedAreaId)
+        }
+    }, [recommendedAreaId])
+
+    // Filter and Sort Items
     const filteredItems = useMemo(() => {
-        if (!Array.isArray(items)) return []
+        let result = items.filter(item => {
+            const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (item.sap_code && item.sap_code.includes(searchTerm))
 
-        return items.filter(item => {
-            if (!item) return false
+            // STRICT FILTERING LOGIC:
+            // 1. If filterArea is set (defaulting to employee's area), show only matches OR generic items (area_id is null)
+            // 2. However, the user specifically requested: "If it's RAMPA, don't show to PAX".
+            //    So if item has an specific area that is DIFFERENT from the employee's area, it should generally be hidden unless "All Areas" is explicitly selected.
 
-            const name = item.name || ''
-            const code = item.code || ''
-            const searchLower = searchTerm.toLowerCase()
-
-            const matchesSearch =
-                name.toLowerCase().includes(searchLower) ||
-                code.toLowerCase().includes(searchLower)
-
-            const matchesArea = filterArea ? item.area_id === filterArea : true
+            let matchesArea = true
+            if (filterArea) {
+                // Show matched area OR global items (null area_id)
+                // NOTE: We assume null area_id means 'General' available to all. 
+                // If the item belongs to ANOTHER specific area, it will fail this check.
+                matchesArea = (item.area_id === filterArea) || (!item.area_id)
+            }
 
             return matchesSearch && matchesArea
         })
-    }, [items, searchTerm, filterArea])
+
+        // Sort by relevance: Recommended Area first
+        if (recommendedAreaId) {
+            result.sort((a, b) => {
+                const aIsRec = a.area_id === recommendedAreaId ? 1 : 0
+                const bIsRec = b.area_id === recommendedAreaId ? 1 : 0
+                return bIsRec - aIsRec
+            })
+        }
+
+        return result
+    }, [items, searchTerm, filterArea, recommendedAreaId])
 
     if (!show) return null
 
     return (
-        <div className="gestor-modal-backdrop">
-            <div className="gestor-modal-content max-w-2xl">
-                {/* Header */}
-                <div className="gestor-modal-header">
-                    <h3 className="gestor-modal-title flex items-center">
-                        <Package className="w-5 h-5 mr-2 text-primary-600" />
-                        Seleccionar Producto
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors"
-                    >
-                        <X className="w-6 h-6" />
-                    </button>
-                </div>
+        <AnimatePresence>
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white dark:bg-gray-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+                >
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Package className="text-blue-600" size={20} />
+                                Seleccionar Item
+                            </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {recommendedAreaId ? 'Mostrando sugeridos para el área del colaborador' : 'Busca en el inventario disponible'}
+                            </p>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
 
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-                    <div className="flex flex-col md:flex-row gap-3">
-                        {/* Search */}
-                        <div className="relative flex-grow">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    {/* Search & Filters */}
+                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 space-y-3 bg-white dark:bg-gray-800">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
-                                placeholder="Buscar por nombre, código..."
+                                autoFocus
+                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
+                                placeholder="Buscar por nombre, código SAP..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="input pl-10 w-full"
-                                autoFocus
                             />
                         </div>
 
-                        {/* Area Filter */}
-                        <div className="relative md:w-1/3">
-                            <Map className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <div className="flex gap-2">
                             <select
+                                className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20"
                                 value={filterArea}
                                 onChange={(e) => setFilterArea(e.target.value)}
-                                className="input pl-9 w-full"
                             >
                                 <option value="">Todas las Áreas</option>
                                 {areas.map(area => (
@@ -82,92 +117,144 @@ const ItemPickerModal = ({
                             </select>
                         </div>
                     </div>
-                </div>
 
-                {/* List Summary */}
-                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700 flex justify-between uppercase font-bold tracking-wider">
-                    <span>{filteredItems.length} resultados encontrados</span>
-                    {filterArea && <span>Filtrado por área</span>}
-                </div>
+                    {/* Items List */}
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-gray-50 dark:bg-gray-900/50">
+                        {filteredItems.length > 0 ? (
+                            filteredItems.map((item) => {
+                                const isRecommended = recommendedAreaId && item.area_id === recommendedAreaId
 
-                <div className="max-h-[60vh] overflow-y-auto gestor-tbody">
-                    {filteredItems.length === 0 ? (
-                        <div className="py-12 text-center">
-                            <Package className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                            <p className="text-gray-500 dark:text-gray-400">No se encontraron productos</p>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {filteredItems.map(item => {
-                                const hasStock = item.stock_current > 0
-                                const itemArea = areas.find(a => a.id === item.area_id)
-                                const areaName = itemArea ? itemArea.name : null // Only show if specific area
+                                // Calculate Virtual Stock
+                                const qtyInCart = cartItems
+                                    .filter(ci => ci.item_id === item.id)
+                                    .reduce((sum, ci) => sum + ci.quantity, 0)
+
+                                const effectiveStock = item.stock_current - qtyInCart
+                                const hasStock = effectiveStock > 0
+
+                                const areaName = areas.find(a => a.id === item.area_id)?.name || 'General'
 
                                 return (
                                     <div
                                         key={item.id}
-                                        className={`p-4 gestor-tr-hover cursor-pointer flex items-center justify-between group ${!hasStock ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}
-                                        onClick={() => onSelect(item)}
+                                        onClick={() => hasStock && onSelect(item)}
+                                        className={`group relative flex items-center gap-4 p-3 rounded-xl border transition-all ${hasStock
+                                            ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md cursor-pointer'
+                                            : 'bg-gray-50 dark:bg-gray-800/50 border-transparent' // Removed opacity-75
+                                            }`}
                                     >
-                                        <div className="flex-grow">
-                                            <div className="flex items-center mb-1">
-                                                <h4 className={`font-medium text-sm ${!hasStock ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-gray-200'}`}>
+                                        {/* Icon Box */}
+                                        <div className={`p-3 rounded-lg shrink-0 ${hasStock
+                                            ? isRecommended ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
+                                            }`}>
+                                            <Package size={24} />
+                                        </div>
+
+                                        {/* Details */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start">
+                                                <h4 className={`font-medium truncate pr-2 ${hasStock ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
                                                     {item.name}
                                                 </h4>
+                                                {isRecommended && (
+                                                    <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-200 dark:border-amber-800/50">
+                                                        <Star size={10} fill="currentColor" />
+                                                        Sugerido
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                <span className="flex items-center gap-1">
+                                                    <Briefcase size={12} />
+                                                    {areaName}
+                                                </span>
                                                 {item.size && (
-                                                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300">
-                                                        <Ruler className="w-3 h-3 mr-1" />
+                                                    <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded font-mono">
                                                         {item.size}
                                                     </span>
                                                 )}
-                                                {areaName && (
-                                                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                                        <Map className="w-3 h-3 mr-1" />
-                                                        {areaName}
-                                                    </span>
+                                                {item.sap_code && (
+                                                    <span className="font-mono opacity-70">SAP: {item.sap_code}</span>
                                                 )}
                                             </div>
-                                            <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-                                                <span className="mr-3 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                                                    {item.item_type}
-                                                </span>
-                                            </div>
                                         </div>
 
-                                        <div className="text-right pl-4">
-                                            <div className={`text-sm font-bold ${hasStock ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-500'}`}>
-                                                Stock: {item.stock_current}
-                                            </div>
-                                            {!hasStock && (
-                                                <div className="text-xs text-red-500 flex items-center justify-end mt-1">
-                                                    <AlertCircle className="w-3 h-3 mr-1" />
-                                                    Agotado
+                                        {/* Stock Status & Actions */}
+                                        <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                            {hasStock ? (
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-lg font-bold text-gray-900 dark:text-white font-mono leading-none">
+                                                        {effectiveStock}
+                                                    </span>
+                                                    <span className="text-[10px] uppercase text-gray-400 font-medium">
+                                                        Disponible
+                                                    </span>
+                                                    {qtyInCart > 0 && (
+                                                        <span className="text-[10px] text-blue-500 font-bold">
+                                                            ({qtyInCart} en carrito)
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-end">
+                                                    <span className="flex items-center gap-1 text-red-500 font-medium text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-100 dark:border-red-800/50">
+                                                        <AlertTriangle size={12} />
+                                                        Sin Stock
+                                                    </span>
+                                                    {/* ALWAYS SHOW BUTTON FOR DEBUGGING */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            if (onAddStock) onAddStock(item)
+                                                            else console.warn('onAddStock is missing')
+                                                        }}
+                                                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer z-10"
+                                                    >
+                                                        <PlusCircle size={12} />
+                                                        Reponer
+                                                    </button>
                                                 </div>
                                             )}
-                                        </div>
-
-                                        <div className="ml-4 text-primary-600 dark:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Check className="w-5 h-5" />
                                         </div>
                                     </div>
                                 )
                             })
-                            }
-                        </div>
-                    )}
-                </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-12 text-center opacity-60">
+                                <Package size={48} className="text-gray-300 mb-3" />
+                                <p className="text-gray-900 dark:text-white font-medium">No se encontraron items</p>
+                                <p className="text-sm text-gray-500 mb-4">Intenta con otro término de búsqueda.</p>
+                                {/* ALWAYS SHOW BUTTON FOR DEBUGGING */}
+                                <button
+                                    onClick={onCreateItem}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/30 flex items-center gap-2"
+                                >
+                                    <Plus size={16} />
+                                    Crear Nuevo Item
+                                </button>
+                            </div>
+                        )}
+                    </div>
 
-                <div className="gestor-modal-footer">
-                    <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={onClose}
-                    >
-                        Cancelar
-                    </button>
-                </div>
+                    {/* Footer / Global Quick Actions */}
+                    <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center text-xs text-gray-500">
+                        <span>{filteredItems.length} items encontrados</span>
+                        <div className="flex gap-2">
+                            {/* ALWAYS SHOW BUTTON FOR DEBUGGING */}
+                            <button
+                                onClick={onCreateItem}
+                                className="px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                                <Plus size={14} />
+                                Nuevo Item Manual
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
             </div>
-        </div >
+        </AnimatePresence>
     )
 }
 

@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import supabase from '@services/supabase'
 import { useNotification } from '@contexts/NotificationContext'
 import { Building2, Save, Globe } from 'lucide-react'
+import { useAuth } from '@contexts/AuthContext'
+import { ROLES } from '@utils/constants'
 
 const GeneralSettings = () => {
+    const { user } = useAuth()
     const { notify } = useNotification()
     const [settings, setSettings] = useState([])
     const [loading, setLoading] = useState(true)
@@ -15,14 +18,14 @@ const GeneralSettings = () => {
         fetchSettings()
     }, [])
 
-    const handleLogoUpload = async (event) => {
+    const handleLogoUpload = async (event, settingKey) => {
         try {
-            setUploadingLogo(true)
+            setUploadingLogo(settingKey)
             const file = event.target.files[0]
             if (!file) return
 
             const fileExt = file.name.split('.').pop()
-            const fileName = `company_logo_${Math.random()}.${fileExt}`
+            const fileName = `company_logo_${settingKey.toLowerCase()}_${Math.random()}.${fileExt}`
             const filePath = `${fileName}`
 
             // Upload to 'settings' bucket (assuming it exists or public)
@@ -38,11 +41,11 @@ const GeneralSettings = () => {
                 .getPublicUrl(filePath)
 
             // Update state and DB
-            handleUpdateSetting('COMPANY_LOGO_URL', publicUrl)
+            handleUpdateSetting(settingKey, publicUrl)
 
             // Upsert immediately to save the new logo
             await supabase.from('app_settings').upsert({
-                key: 'COMPANY_LOGO_URL',
+                key: settingKey,
                 value: publicUrl,
                 updated_at: new Date()
             })
@@ -152,37 +155,109 @@ const GeneralSettings = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Logo Section */}
-                    <div className="col-span-1 md:col-span-2">
-                        <label className="label mb-2">Logotipo de la Empresa</label>
-                        <div className="flex items-center space-x-6">
-                            <div className="w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-900 relative">
-                                {getSetting('COMPANY_LOGO_URL') ? (
-                                    <img
-                                        src={getSetting('COMPANY_LOGO_URL')}
-                                        alt="Logo"
-                                        className="w-full h-full object-contain p-2"
+                    <div className="col-span-1 md:col-span-2 space-y-8">
+                        {/* Report Logo */}
+                        <div>
+                            <label className="label mb-2">Logotipo para Reportes (PDF)</label>
+                            <div className="flex items-center space-x-6">
+                                <div className="w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-900 relative">
+                                    {getSetting('COMPANY_LOGO_URL') ? (
+                                        <img
+                                            src={getSetting('COMPANY_LOGO_URL')}
+                                            alt="Logo Reporte"
+                                            className="w-full h-full object-contain p-2"
+                                        />
+                                    ) : (
+                                        <span className="text-xs text-center text-gray-400 p-2">Sin Logo</span>
+                                    )}
+                                    {uploadingLogo === 'COMPANY_LOGO_URL' && (
+                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1 max-w-sm">
+                                    <label className="block mb-2 text-sm font-medium text-gray-900 dark:text-white text-xs">Cambiar logo reportes</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => handleLogoUpload(e, 'COMPANY_LOGO_URL')}
+                                        disabled={uploadingLogo}
+                                        className="block w-full text-xs text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400"
                                     />
-                                ) : (
-                                    <span className="text-xs text-center text-gray-400 p-2">Sin Logo</span>
-                                )}
-                                {uploadingLogo && (
-                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex-1 max-w-md">
-                                <label className="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Subir nuevo logo</label>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleLogoUpload}
-                                    disabled={uploadingLogo}
-                                    className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400"
-                                />
-                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">SVG, PNG, JPG (Recomendado fondo transparente).</p>
+                                    <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">Este logo se usará exclusivamente en generados PDF.</p>
+                                </div>
                             </div>
                         </div>
+
+                        {/* System Logos - Only for ADMIN */}
+                        {user?.role === ROLES.ADMIN && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                {/* System Logo Light */}
+                                <div>
+                                    <label className="label mb-2">Logo para fondos Claros</label>
+                                    <div className="flex items-center space-x-4">
+                                        <div className="w-20 h-20 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center overflow-hidden bg-white relative">
+                                            {getSetting('SYSTEM_LOGO_LIGHT_URL') ? (
+                                                <img
+                                                    src={getSetting('SYSTEM_LOGO_LIGHT_URL')}
+                                                    alt="Logo Fondo Claro"
+                                                    className="w-full h-full object-contain p-1"
+                                                />
+                                            ) : (
+                                                <span className="text-[10px] text-center text-gray-400">Sin Logo</span>
+                                            )}
+                                            {uploadingLogo === 'SYSTEM_LOGO_LIGHT_URL' && (
+                                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => handleLogoUpload(e, 'SYSTEM_LOGO_LIGHT_URL')}
+                                                disabled={uploadingLogo}
+                                                className="block w-full text-xs text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* System Logo Dark */}
+                                <div>
+                                    <label className="label mb-2">Logo para fondos Oscuros (Sidebar)</label>
+                                    <div className="flex items-center space-x-4">
+                                        <div className="w-20 h-20 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center overflow-hidden bg-gray-900 relative">
+                                            {getSetting('SYSTEM_LOGO_DARK_URL') ? (
+                                                <img
+                                                    src={getSetting('SYSTEM_LOGO_DARK_URL')}
+                                                    alt="Logo Fondo Oscuro"
+                                                    className="w-full h-full object-contain p-1"
+                                                />
+                                            ) : (
+                                                <span className="text-[10px] text-center text-gray-400">Sin Logo</span>
+                                            )}
+                                            {uploadingLogo === 'SYSTEM_LOGO_DARK_URL' && (
+                                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => handleLogoUpload(e, 'SYSTEM_LOGO_DARK_URL')}
+                                                disabled={uploadingLogo}
+                                                className="block w-full text-xs text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div>

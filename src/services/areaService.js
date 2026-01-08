@@ -15,8 +15,11 @@ class AreaService {
             let query = supabase
                 .from('areas')
                 .select('*')
-                .eq('station_id', stationId)
                 .order('name', { ascending: true })
+
+            if (stationId) {
+                query = query.eq('station_id', stationId)
+            }
 
             if (activeOnly) {
                 query = query.eq('is_active', true)

@@ -14,7 +14,8 @@ class MasterProductService {
                 .select(`
                     *,
                     category:product_categories(name),
-                    type:product_types(name)
+                    type:product_types(name),
+                    area:areas(name)
                 `)
                 .or(`name.ilike.%${query}%,sap_code.ilike.%${query}%`)
                 .eq('is_active', true)
@@ -109,7 +110,8 @@ class MasterProductService {
                 .select(`
                     *, 
                     category:product_categories(name),
-                    type:product_types(name)
+                    type:product_types(name),
+                    area:areas(name)
                 `, { count: 'exact' })
                 .order('created_at', { ascending: false })
                 .range(from, to)

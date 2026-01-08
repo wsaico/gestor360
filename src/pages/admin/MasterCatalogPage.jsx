@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@contexts/AuthContext'
 import { useNotification } from '@contexts/NotificationContext'
 import masterProductService from '@services/masterProductService'
-import * as XLSX from 'xlsx' // Needed for manual template if used, though modal handles it too
+import areaService from '@services/areaService'
+import * as XLSX from 'xlsx'
 import MasterProductImportModal from '@components/admin/MasterProductImportModal'
 import Pagination from '@components/common/Pagination'
 import {
@@ -26,6 +27,7 @@ const MasterCatalogPage = () => {
 
     const [products, setProducts] = useState([])
     const [types, setTypes] = useState([])
+    const [areas, setAreas] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
 
@@ -48,6 +50,8 @@ const MasterCatalogPage = () => {
         type_id: '',
         base_price: 0,
         unit_measurement: 'UNIDAD',
+        size: '',
+        area_id: '',
         image_url: ''
     })
 
@@ -79,6 +83,14 @@ const MasterCatalogPage = () => {
         try {
             const typs = await masterProductService.getTypes()
             setTypes(typs)
+            const ars = await areaService.getAll()
+            // Eliminar duplicados por nombre para el Catálogo Maestro global
+            const uniqueAreas = ars.reduce((acc, current) => {
+                const x = acc.find(item => item.name === current.name);
+                if (!x) return acc.concat([current]);
+                else return acc;
+            }, []);
+            setAreas(uniqueAreas)
         } catch (error) {
             console.error('Error fetching metadata', error)
         }
@@ -118,6 +130,8 @@ const MasterCatalogPage = () => {
                 type_id: product.type_id || '',
                 base_price: product.base_price || 0,
                 unit_measurement: product.unit_measurement || 'UNIDAD',
+                size: product.size || '',
+                area_id: product.area_id || '',
                 image_url: product.image_url || ''
             })
         } else {
@@ -129,6 +143,8 @@ const MasterCatalogPage = () => {
                 type_id: '',
                 base_price: 0,
                 unit_measurement: 'UNIDAD',
+                size: '',
+                area_id: '',
                 image_url: ''
             })
         }
@@ -185,6 +201,8 @@ const MasterCatalogPage = () => {
                 'CODIGO_SAP': '1001',
                 'NOMBRE': 'Ejemplo Producto',
                 'TIPO': 'EPP', // Auto-create
+                'AREA': 'RAMPA',
+                'TALLA': 'L',
                 'PRECIO_BASE': 10.50,
                 'UNIDAD': 'UNIDAD',
                 'DESCRIPCION': 'Descripción del producto'
@@ -263,6 +281,7 @@ const MasterCatalogPage = () => {
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">SKU / SAP</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Área / Talla</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                                 <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                             </tr>
@@ -284,6 +303,10 @@ const MasterCatalogPage = () => {
                                             <span className="px-2 py-1 text-xs rounded-md bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 font-medium">
                                                 {product.type?.name || '-'}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-xs font-medium text-gray-900 dark:text-white">{product.area?.name || 'Gral.'}</div>
+                                            <div className="text-[10px] text-gray-500">{product.size || '-'}</div>
                                         </td>
 
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
@@ -401,6 +424,31 @@ const MasterCatalogPage = () => {
                                     </select>
                                 </div>
 
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="label">Área Sugerida</label>
+                                    <select
+                                        value={formData.area_id}
+                                        onChange={e => setFormData({ ...formData, area_id: e.target.value })}
+                                        className="input w-full"
+                                    >
+                                        <option value="">-- Sin Área Específica --</option>
+                                        {areas.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="label">Talla / Medida</label>
+                                    <input
+                                        type="text"
+                                        value={formData.size}
+                                        onChange={e => setFormData({ ...formData, size: e.target.value })}
+                                        className="input w-full"
+                                        placeholder="Ej: L, 42, 10 pies"
+                                    />
+                                </div>
+
                                 <div className="col-span-2">
                                     <label className="label">Descripción</label>
                                     <textarea
@@ -434,43 +482,45 @@ const MasterCatalogPage = () => {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div >
             )}
 
             {/* CREATE TYPE MODAL */}
-            {showTypeModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl border-t-4 border-purple-500">
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Nuevo Tipo de Producto</h3>
-                        <form onSubmit={handleCreateType} className="space-y-4">
-                            <div>
-                                <label className="label">Nombre (Ej: EPP, Uniforme)</label>
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    value={typeForm.name}
-                                    onChange={e => setTypeForm({ ...typeForm, name: e.target.value.toUpperCase() })}
-                                    className="input w-full uppercase"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="label">Descripción</label>
-                                <input
-                                    type="text"
-                                    value={typeForm.description}
-                                    onChange={e => setTypeForm({ ...typeForm, description: e.target.value })}
-                                    className="input w-full"
-                                />
-                            </div>
-                            <div className="flex justify-end gap-2 pt-2">
-                                <button type="button" onClick={() => setShowTypeModal(false)} className="btn btn-secondary btn-sm">Cancelar</button>
-                                <button type="submit" className="btn btn-primary btn-sm">Crear Tipo</button>
-                            </div>
-                        </form>
+            {
+                showTypeModal && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl border-t-4 border-purple-500">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Nuevo Tipo de Producto</h3>
+                            <form onSubmit={handleCreateType} className="space-y-4">
+                                <div>
+                                    <label className="label">Nombre (Ej: EPP, Uniforme)</label>
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={typeForm.name}
+                                        onChange={e => setTypeForm({ ...typeForm, name: e.target.value.toUpperCase() })}
+                                        className="input w-full uppercase"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label">Descripción</label>
+                                    <input
+                                        type="text"
+                                        value={typeForm.description}
+                                        onChange={e => setTypeForm({ ...typeForm, description: e.target.value })}
+                                        className="input w-full"
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button type="button" onClick={() => setShowTypeModal(false)} className="btn btn-secondary btn-sm">Cancelar</button>
+                                    <button type="submit" className="btn btn-primary btn-sm">Crear Tipo</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             <MasterProductImportModal
                 isOpen={showImportModal}
@@ -480,9 +530,10 @@ const MasterCatalogPage = () => {
                     // Modal handles its own success notification
                 }}
                 types={types}
+                areas={areas}
             />
 
-        </div>
+        </div >
     )
 }
 

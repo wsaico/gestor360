@@ -214,7 +214,7 @@ export const RENEWAL_STATUS = {
 // Labels para estados de renovación
 export const RENEWAL_STATUS_LABELS = {
   VIGENTE: 'Vigente',
-  POR_VENCER: 'Por Vencer (30 días)',
+  POR_VENCER: 'Por Vencer',
   VENCIDO: 'Vencido - Requiere Renovación'
 }
 

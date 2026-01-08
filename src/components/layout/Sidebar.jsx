@@ -232,6 +232,7 @@ const menuItems = [
 const Sidebar = ({ isOpen, onClose, onOpen }) => {
   const { user, hasRole } = useAuth()
   const location = useLocation()
+  const { darkMode } = useTheme()
 
   // App Identity State
   const [appIdentity, setAppIdentity] = useState({
@@ -245,17 +246,18 @@ const Sidebar = ({ isOpen, onClose, onOpen }) => {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['COMPANY_NAME', 'COMPANY_LOGO_URL'])
+        .in('key', ['COMPANY_NAME', 'COMPANY_LOGO_URL', 'SYSTEM_LOGO_LIGHT_URL', 'SYSTEM_LOGO_DARK_URL'])
 
       const name = data?.find(s => s.key === 'COMPANY_NAME')?.value
-      const logo = data?.find(s => s.key === 'COMPANY_LOGO_URL')?.value
+      const logoReport = data?.find(s => s.key === 'COMPANY_LOGO_URL')?.value
+      const logoLight = data?.find(s => s.key === 'SYSTEM_LOGO_LIGHT_URL')?.value
+      const logoDark = data?.find(s => s.key === 'SYSTEM_LOGO_DARK_URL')?.value
 
-      if (name || logo) {
-        setAppIdentity(prev => ({
-          name: name || prev.name,
-          logo: logo || prev.logo
-        }))
-      }
+      setAppIdentity(prev => ({
+        name: name || prev.name,
+        logoLight: logoLight || logoReport || prev.logo, // Fallback to report logo if system logo not set
+        logoDark: logoDark || logoReport || prev.logo
+      }))
     }
     fetchIdentity()
   }, [])
@@ -332,10 +334,15 @@ const Sidebar = ({ isOpen, onClose, onOpen }) => {
         `}
       >
         {/* Header del Sidebar */}
-        <div className={`flex items-center h-16 border-b border-slate-800 transition-all duration-300 ${isOpen ? 'justify-between px-6' : 'justify-center px-0'}`}>
-          <div className="flex items-center space-x-2 overflow-hidden">
-            {appIdentity.logo ? (
-              <img src={appIdentity.logo} alt="Logo" className="w-auto h-8 object-contain" />
+        <div className={`flex items-center h-20 border-b border-slate-800 transition-all duration-300 justify-center ${isOpen ? 'px-6' : 'px-0'}`}>
+          <div className="flex items-center justify-center overflow-hidden w-full">
+            {/* Sidebar is always dark (bg-slate-900), so we use logoDark preferred */}
+            {(appIdentity.logoDark || appIdentity.logoLight) ? (
+              <img
+                src={appIdentity.logoDark || appIdentity.logoLight}
+                alt="Logo"
+                className={`object-contain transition-all duration-300 ${isOpen ? 'h-10' : 'h-8'}`}
+              />
             ) : (
               <>
                 <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -351,9 +358,9 @@ const Sidebar = ({ isOpen, onClose, onOpen }) => {
           </div>
           <button
             onClick={onClose}
-            className={`lg:hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 ${!isOpen && 'lg:hidden'}`}
+            className={`absolute right-4 lg:hidden text-gray-400 hover:text-white transition-colors ${!isOpen && 'hidden'}`}
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-6 h-6" />
           </button>
         </div>
 

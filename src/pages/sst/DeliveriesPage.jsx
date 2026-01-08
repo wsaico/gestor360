@@ -12,6 +12,7 @@ import { generateDeliveryPDF } from '@utils/pdfGenerator'
 import AddStockModal from '@components/sst/AddStockModal'
 import SearchableSelect from '@components/common/SearchableSelect'
 import ItemPickerModal from '@components/sst/ItemPickerModal'
+import ItemFormModal from '@components/sst/ItemFormModal'
 import ConfirmDialog from '@components/ConfirmDialog'
 import CancellationModal from '@components/common/CancellationModal'
 import {
@@ -34,7 +35,10 @@ import {
   Calendar,
   ClipboardList,
   ChevronRight,
-  ShoppingCart
+  ShoppingCart,
+  Printer,
+  Info,
+  Download
 } from 'lucide-react'
 import {
   DELIVERY_STATUS,
@@ -134,21 +138,26 @@ const DeliveriesPage = () => {
   }
 
   const handleStartSigning = (delivery) => {
-    setSelectedDelivery(delivery)
-    setSigningStep(1) // Always start at 1
-    // Pre-fill responsible if it's the current logged in user (optional improvement)
-    if (user?.id) {
-      // logic to pre-fill could go here if we had employee mapping current user
+    // If it's a freshly created delivery, it might not have the .employee object joined
+    // but we have the employees list in state
+    let enrichedDelivery = { ...delivery }
+    if (!enrichedDelivery.employee && enrichedDelivery.employee_id) {
+      const emp = employees.find(e => e.id === enrichedDelivery.employee_id)
+      if (emp) {
+        enrichedDelivery.employee = emp
+      }
     }
+
+    setSelectedDelivery(enrichedDelivery)
+    setSigningStep(1) // Always start at 1
     setShowSignatureModal(true)
   }
 
   // Stock Modal State
-  const [showStockModal, setShowStockModal] = useState(false)
-  const [stockItem, setStockItem] = useState(null)
-
-  // Item Picker State
   const [showItemPicker, setShowItemPicker] = useState(false)
+  const [showStockModal, setShowStockModal] = useState(false)
+  const [showCreateItemModal, setShowCreateItemModal] = useState(false) // New state for ItemFormModal
+  const [stockItem, setStockItem] = useState(null)
 
   const [formData, setFormData] = useState({
     employee_id: '',
@@ -184,24 +193,23 @@ const DeliveriesPage = () => {
   }
 
   // Stock Modal Handlers
-  const handleOpenStockModal = (e) => {
-    e?.preventDefault()
-    if (!currentItem.item_id) {
-      notify.warning('Seleccione un item primero')
-      return
-    }
-    const item = items.find(i => i.id === currentItem.item_id)
-    if (item) {
-      setStockItem(item)
-      setShowStockModal(true)
-    }
+  const handleOpenStockModal = (item) => {
+    setStockItem(item)
+    setShowStockModal(true)
+    // We do NOT close the picker here so the user can see the stock update
   }
 
   const handleStockSuccess = async () => {
-    // Refresh items to get new stock
-    const itemsData = await eppInventoryService.getAll(station.id)
-    setItems(itemsData || [])
+    await fetchItems() // Refresh items to show new stock
+    setShowStockModal(false)
+    setStockItem(null)
     notify.success('Stock actualizado correctamente')
+  }
+
+  const handleCreateItemSuccess = async () => {
+    await fetchItems() // Refresh to include new item
+    setShowCreateItemModal(false)
+    // Note: The ItemPicker will automatically reflect the new item if it matches filters
   }
 
   useEffect(() => {
@@ -209,6 +217,7 @@ const DeliveriesPage = () => {
     if (station?.id || user?.role === 'ADMIN') {
       fetchData(1) // Load page 1 on mount/station change
       fetchSettings()
+      fetchItems() // Fetch items initially
     }
   }, [station?.id, user?.role])
 
@@ -251,6 +260,20 @@ const DeliveriesPage = () => {
     }
   }
 
+  const fetchItems = async () => {
+    try {
+      let targetStationId = getEffectiveStationId(selectedStationId)
+      if (targetStationId === 'null' || targetStationId === '' || targetStationId === 'undefined') {
+        targetStationId = null
+      }
+      const itemsData = await eppInventoryService.getAll(targetStationId)
+      setItems(itemsData || [])
+    } catch (error) {
+      console.error('Error fetching items:', error)
+      notify.error('Error al cargar los items: ' + error.message)
+    }
+  }
+
   // Calculate total cost whenever items change
   useEffect(() => {
     if (formData.items && formData.items.length > 0) {
@@ -267,6 +290,13 @@ const DeliveriesPage = () => {
       fetchData(page)
     }
   }, [page])
+
+  // Enforce "General" tab if no employee is selected while on "Items" tab
+  useEffect(() => {
+    if (!formData.employee_id && activeTab === 'items' && showModal) {
+      setActiveTab('general')
+    }
+  }, [formData.employee_id, activeTab, showModal])
 
   const fetchData = async (currentPage = 1) => {
     // Si no hay estación y NO es admin global, no cargar nada.
@@ -293,27 +323,26 @@ const DeliveriesPage = () => {
       // Only load areas if we have a station ID
       let areasData = []
       let employeesData = []
-      let itemsData = []
+      // Items are now fetched by fetchItems()
+      // let itemsData = []
 
       if (targetStationId) {
         // Load all resources when station is selected
-        [employeesData, itemsData, areasData] = await Promise.all([
+        [employeesData, areasData] = await Promise.all([
           employeeService.getAll(targetStationId, { activeOnly: true }, 1, 1000).then(res => res.data),
-          eppInventoryService.getAll(targetStationId),
           areaService.getAll(targetStationId, true)
         ])
       } else {
-        // Load only employees and items when no station (for modal to work)
-        [employeesData, itemsData] = await Promise.all([
+        // Load only employees when no station (for modal to work)
+        [employeesData] = await Promise.all([
           employeeService.getAll(null, { activeOnly: true }, 1, 1000).then(res => res.data),
-          eppInventoryService.getAll(null)
         ])
       }
 
       setDeliveries(deliveriesData || [])
       setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE))
       setEmployees(employeesData || [])
-      setItems(itemsData || [])
+      // setItems(itemsData || []) // Items are now fetched by fetchItems()
       setAreas(areasData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -346,8 +375,15 @@ const DeliveriesPage = () => {
       }
     }
 
-    if (item.stock_current < currentItem.quantity) {
-      notify.error(`Stock insuficiente. Disponible: ${item.stock_current}`)
+    // Calculate Effective Stock (considering units already in cart)
+    const qtyInCart = formData.items
+      .filter(i => i.item_id === item.id)
+      .reduce((sum, i) => sum + i.quantity, 0)
+
+    const effectiveStock = item.stock_current - qtyInCart
+
+    if (effectiveStock < currentItem.quantity) {
+      notify.error(`Stock insuficiente. Disponible (real): ${item.stock_current}. Ya tienes ${qtyInCart} en el carrito. Stock restante: ${effectiveStock}`)
       return
     }
 
@@ -407,10 +443,13 @@ const DeliveriesPage = () => {
         items: formData.items
       }
 
-      await deliveryService.create(deliveryData)
+      const newDelivery = await deliveryService.create(deliveryData)
       await fetchData()
       handleCloseModal()
-      notify.success('Entrega creada correctamente. Ahora puede proceder a firmarla.')
+
+      notify.success('Entrega creada correctamente. Iniciando proceso de firma...')
+      // AUTO-SIGN FLOW: Start signing immediately
+      handleStartSigning(newDelivery)
     } catch (error) {
       console.error('Error creating delivery:', error)
       notify.error(error.message || 'Error al crear la entrega')
@@ -419,10 +458,11 @@ const DeliveriesPage = () => {
 
   const handleCloseModal = () => {
     setShowModal(false)
+    setActiveTab('general') // Reset to first tab
     setFormData({
       employee_id: '',
       delivery_date: new Date().toISOString().split('T')[0],
-      delivery_reason: 'NUEVO_INGRESO',
+      delivery_reason: 'REPOSICION', // Changed from NEW_ENTRY to match common usage
       notes: '',
       items: []
     })
@@ -637,7 +677,10 @@ const DeliveriesPage = () => {
   }))
 
   const selectedItemObj = items.find(i => i.id === currentItem.item_id)
-  const isOutOfStock = selectedItemObj && selectedItemObj.stock_current <= 0
+  const qtyInCartForSelected = selectedItemObj ? formData.items
+    .filter(i => i.item_id === selectedItemObj.id)
+    .reduce((sum, i) => sum + i.quantity, 0) : 0
+  const isOutOfStock = selectedItemObj && (selectedItemObj.stock_current - qtyInCartForSelected) <= 0
 
   const handleSelectItem = (item) => {
     // AREA RESTRICTION LOGIC
@@ -1069,8 +1112,9 @@ const DeliveriesPage = () => {
                   {activeTab === 'general' && <motion.div layoutId="tab-underline-del" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />}
                 </button>
                 <button
+                  disabled={!formData.employee_id}
                   onClick={() => setActiveTab('items')}
-                  className={`pb-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${activeTab === 'items' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600'}`}
+                  className={`pb-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${activeTab === 'items' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                 >
                   <ShoppingCart size={16} />
                   Items y Carrito
@@ -1153,15 +1197,7 @@ const DeliveriesPage = () => {
                         </div>
                       </div>
 
-                      <div className="flex justify-end pt-4">
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('items')}
-                          className="btn btn-primary btn-md px-6 flex items-center gap-2"
-                        >
-                          Siguiente: Agregar Items <ChevronRight size={16} />
-                        </button>
-                      </div>
+
                     </motion.div>
                   )}
 
@@ -1193,7 +1229,14 @@ const DeliveriesPage = () => {
                             <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase">Buscar Item</label>
                             <button
                               type="button"
-                              onClick={() => setShowItemPicker(true)}
+                              onClick={() => {
+                                if (!formData.employee_id) {
+                                  notify.warning('Debe seleccionar un empleado primero para filtrar los items de su área.')
+                                  setActiveTab('general')
+                                  return
+                                }
+                                setShowItemPicker(true)
+                              }}
                               className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-primary-400 transition-colors group text-left"
                             >
                               {currentItem.item_id ? (
@@ -1220,7 +1263,7 @@ const DeliveriesPage = () => {
                                 className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-center font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500/20"
                               />
                               {currentItem.item_id && (
-                                <button type="button" onClick={handleOpenStockModal} className="absolute -right-1 -top-6 text-[10px] text-blue-500 hover:underline flex items-center">
+                                <button type="button" onClick={() => handleOpenStockModal(selectedItemObj)} className="absolute -right-1 -top-6 text-[10px] text-blue-500 hover:underline flex items-center">
                                   + Stock
                                 </button>
                               )}
@@ -1304,12 +1347,32 @@ const DeliveriesPage = () => {
                       Cancelar
                     </button>
                     <button
-                      type="submit"
-                      disabled={formData.items.length === 0 || !formData.employee_id}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                      type={activeTab === 'general' ? 'button' : 'submit'}
+                      onClick={() => {
+                        if (activeTab === 'general') {
+                          if (!formData.employee_id) {
+                            notify.warning('Por favor seleccione un empleado primero')
+                            return
+                          }
+                          setActiveTab('items')
+                        }
+                      }}
+                      disabled={activeTab === 'general' ? !formData.employee_id : (formData.items.length === 0 || !formData.employee_id)}
+                      className={`px-6 py-2.5 rounded-xl text-white font-bold shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${activeTab === 'general'
+                        ? 'bg-primary-600 hover:bg-primary-700 shadow-primary-500/30'
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/30'
+                        }`}
                     >
-                      <Sparkles size={18} className="animate-pulse" />
-                      Crear Entrega
+                      {activeTab === 'general' ? (
+                        <>
+                          Siguiente: Agregar Items <ChevronRight size={18} />
+                        </>
+                      ) : (
+                        <>
+                          <PenTool size={18} className="animate-pulse" />
+                          Guardar y Firmar
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1378,7 +1441,11 @@ const DeliveriesPage = () => {
                       <SearchableSelect
                         label="Nombre del Responsable *"
                         required
-                        options={employeeOptions}
+                        options={employees.map(emp => ({
+                          value: emp.id,
+                          label: `${emp.full_name} (${emp.dni}) - ${emp.role_name || emp.role}`,
+                          area_id: emp.area_id // Pass area_id for reference
+                        }))}
                         value={responsibleData.employee_id}
                         onChange={(val) => {
                           const emp = employees.find(e => e.id === val)
@@ -1415,15 +1482,6 @@ const DeliveriesPage = () => {
           </div>
         </div>
       )}
-
-      {/* Item Picker Modal */}
-      <ItemPickerModal
-        show={showItemPicker}
-        onClose={() => setShowItemPicker(false)}
-        items={items}
-        areas={areas}
-        onSelect={handleSelectItem}
-      />
 
       {/* Delivery Details Modal */}
       <AnimatePresence>
@@ -1513,8 +1571,19 @@ const DeliveriesPage = () => {
         )}
       </AnimatePresence>
 
+      {/* ITEM PICKER MODAL */}
+      <ItemPickerModal
+        show={showItemPicker}
+        onClose={() => setShowItemPicker(false)}
+        onSelect={handleSelectItem}
+        items={items}
+        areas={areas}
+        recommendedAreaId={formData.employee_id ? employees.find(e => e.id === formData.employee_id)?.area_id : null}
+        onCreateItem={() => setShowCreateItemModal(true)}
+        onAddStock={handleOpenStockModal}
+      />
 
-      {/* Stock Modal */}
+      {/* ADD STOCK MODAL (Quick Action) */}
       <AddStockModal
         show={showStockModal}
         onClose={() => setShowStockModal(false)}
@@ -1522,6 +1591,19 @@ const DeliveriesPage = () => {
         onSuccess={handleStockSuccess}
         userId={user?.id}
       />
+
+      {/* CREATE ITEM MODAL (Quick Action) */}
+      <ItemFormModal
+        isOpen={showCreateItemModal}
+        onClose={() => setShowCreateItemModal(false)}
+        onSuccess={handleCreateItemSuccess}
+        stationId={station?.id}
+        areas={areas}
+        employees={employees}
+        // Optional: Pre-fill area if employee is selected
+        initialAreaId={formData.employee_id ? employees.find(e => e.id === formData.employee_id)?.area_id : null}
+      />
+
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}

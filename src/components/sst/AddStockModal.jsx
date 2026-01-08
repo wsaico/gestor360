@@ -53,7 +53,7 @@ const AddStockModal = ({ show, onClose, item, onSuccess, userId }) => {
     if (!show || !item) return null
 
     return (
-        <div className="gestor-modal-backdrop">
+        <div className="gestor-modal-backdrop z-[70]">
             <div className="gestor-modal-content max-w-lg">
                 <form onSubmit={handleSubmit}>
                     <div className="gestor-modal-header">

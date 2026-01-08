@@ -13,7 +13,7 @@ import {
 import masterProductService from '@services/masterProductService'
 import { useNotification } from '@contexts/NotificationContext'
 
-const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) => {
+const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [], areas = [] }) => {
     const { notify } = useNotification()
     const fileInputRef = useRef(null)
 
@@ -29,18 +29,22 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) =>
     const handleDownloadTemplate = () => {
         const headers = [
             'NOMBRE',          // Required
-            'TIPO',            // Required (Must match existing Type Name)
+            'TIPO',            // Required
+            'AREA',            // Optional (Suggested Area)
+            'TALLA',           // Optional
             'CODIGO_SAP',      // Optional
             'DESCRIPCION',     // Optional
-            'PRECIO_BASE',     // Optional (Number)
-            'UNIDAD'           // Optional (Default: UNIDAD)
+            'PRECIO_BASE',     // Optional
+            'UNIDAD'           // Optional
         ]
 
         const sampleRow = [
             'GUANTES DE SEGURIDAD',
-            types[0]?.name || 'EPP', // Example type
+            types[0]?.name || 'EPP',
+            areas[0]?.name || 'GENERAL',
+            'L',
             'SAP12345',
-            'Guantes talla L',
+            'Guantes de protección',
             '15.50',
             'PAR'
         ]
@@ -51,6 +55,8 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) =>
         ws['!cols'] = [
             { wch: 30 }, // NOMBRE
             { wch: 20 }, // TIPO
+            { wch: 20 }, // AREA
+            { wch: 10 }, // TALLA
             { wch: 15 }, // SAP
             { wch: 40 }, // DESCRIPCION
             { wch: 12 }, // PRECIO
@@ -105,6 +111,8 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) =>
         // Map header indexes
         const idxName = headers.indexOf('NOMBRE')
         const idxType = headers.indexOf('TIPO')
+        const idxArea = headers.indexOf('AREA')
+        const idxTalla = headers.indexOf('TALLA')
         const idxSap = headers.indexOf('CODIGO_SAP')
         const idxDesc = headers.indexOf('DESCRIPCION')
         const idxPrice = headers.indexOf('PRECIO_BASE')
@@ -144,6 +152,18 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) =>
                 errors.push('Falta Tipo')
             }
 
+            // Validation 3: Area mapping (Optional)
+            let areaId = null
+            const areaName = row[idxArea]
+            if (areaName) {
+                const foundArea = areas.find(a => a.name.toLowerCase() === String(areaName).toLowerCase())
+                if (foundArea) {
+                    areaId = foundArea.id
+                } else {
+                    errors.push(`Área '${areaName}' no existe`)
+                }
+            }
+
             // Build data object
             const productData = {
                 name: name,
@@ -151,6 +171,8 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [] }) =>
                 description: row[idxDesc] || '',
                 base_price: row[idxPrice] ? parseFloat(row[idxPrice]) : 0,
                 unit_measurement: row[idxUnit] || 'UNIDAD',
+                size: row[idxTalla] || '',
+                area_id: areaId,
                 type_id: typeId,
                 is_active: true
             }

@@ -129,12 +129,19 @@ const RenewalsPage = () => {
   }
 
   // Stock Handlers
+  // Stock Handlers
   const handleOpenStockModal = (e, itemId) => {
     e.preventDefault()
+    e.stopPropagation() // Evitar burbujeo
+
     const item = items.find(i => i.id === itemId)
+
     if (item) {
       setStockItem(item)
       setShowStockModal(true)
+    } else {
+      console.error('Item not found in inventory state. ID:', itemId)
+      notify.error(`No se encontró el item en el inventario actual de esta sede.`)
     }
   }
 
@@ -147,11 +154,22 @@ const RenewalsPage = () => {
   const handleRenewEmployee = (employeeId, employeeName) => {
     const employeeRenewals = renewals.filter(r => r.employee_id === employeeId)
     setSelectedEmployee({ id: employeeId, name: employeeName })
-    setSelectedItems(employeeRenewals.map(r => ({
-      ...r,
-      selected: true,
-      quantity: r.quantity
-    })))
+
+    // Auto-selección inteligente respetando el stock disponible inicialmente
+    const tempStock = {} // item_id -> remaining_stock
+    items.forEach(i => { tempStock[i.id] = i.stock_current })
+
+    setSelectedItems(employeeRenewals.map(r => {
+      const hasStock = (tempStock[r.item_id] || 0) >= r.quantity
+      if (hasStock) {
+        tempStock[r.item_id] -= r.quantity
+      }
+      return {
+        ...r,
+        selected: hasStock, // Solo seleccionar si "alcanza" el stock en orden de aparición
+        quantity: r.quantity
+      }
+    }))
     setShowRenewalModal(true)
   }
 
@@ -171,15 +189,20 @@ const RenewalsPage = () => {
       return
     }
 
-    // Verificar stock disponible
-    for (const item of itemsToRenew) {
-      const itemData = items.find(i => i.id === item.item_id)
+    // Verificar stock disponible de forma agregada
+    const itemsByItemType = itemsToRenew.reduce((acc, item) => {
+      acc[item.item_id] = (acc[item.item_id] || 0) + item.quantity
+      return acc
+    }, {})
+
+    for (const [itemId, totalRequested] of Object.entries(itemsByItemType)) {
+      const itemData = items.find(i => i.id === itemId)
       if (!itemData) {
-        notify.error(`Item ${item.item_name} no encontrado`) // Use notify
+        notify.error(`Item no encontrado para el ID: ${itemId}`)
         return
       }
-      if (itemData.stock_current < item.quantity) {
-        notify.warning(`Stock insuficiente para ${item.item_name}. Disponible: ${itemData.stock_current}`) // Use notify
+      if (itemData.stock_current < totalRequested) {
+        notify.warning(`Stock insuficiente para ${itemData.name}. Disponible: ${itemData.stock_current}, Requerido total: ${totalRequested}`)
         return
       }
     }
@@ -247,6 +270,7 @@ const RenewalsPage = () => {
       )
       notify.success('¡Renovación completada exitosamente!')
 
+      setShowSignatureModal(false) // Fix: Close the modal
       setSigningStep(1)
       setResponsibleData({ name: '', position: '', employee_id: '' })
       setSelectedEmployee(null)
@@ -305,10 +329,18 @@ const RenewalsPage = () => {
       VENCIDO: <AlertTriangle className="w-4 h-4" />
     }
 
+    let label = RENEWAL_STATUS_LABELS[status]
+    if (status === 'POR_VENCER') {
+      if (diffDays === 0) label = '¡Vence Hoy!'
+      else label = `Por Vencer (${diffDays} días)`
+    } else if (status === 'VENCIDO') {
+      label = `Vencido (${Math.abs(diffDays)} días)`
+    }
+
     return (
       <span className={`inline-flex items-center space-x-1 px-2 py-1 text-xs font-semibold rounded-full ${styles[status]}`}>
         {icons[status]}
-        <span>{RENEWAL_STATUS_LABELS[status]}</span>
+        <span>{label}</span>
       </span>
     )
   }
@@ -663,7 +695,14 @@ const RenewalsPage = () => {
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {selectedItems.map((item) => {
                           const itemData = items.find(i => i.id === item.item_id)
-                          const hasStock = itemData && itemData.stock_current >= item.quantity
+
+                          // Cálculo de Stock Virtual (Deducir lo ya seleccionado en otras filas)
+                          const otherSelectedQty = selectedItems
+                            .filter(si => si.selected && si.item_id === item.item_id && si.id !== item.id)
+                            .reduce((sum, si) => sum + si.quantity, 0)
+
+                          const effectiveStock = itemData ? itemData.stock_current - otherSelectedQty : 0
+                          const hasStock = effectiveStock >= item.quantity
                           const diffDays = calculateDaysDiff(item.renewal_date)
 
                           return (
@@ -678,8 +717,10 @@ const RenewalsPage = () => {
                                   type="checkbox"
                                   checked={item.selected}
                                   onChange={() => handleToggleItem(item.id)}
-                                  disabled={!hasStock}
-                                  className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${!hasStock ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                  // Fix: Solo deshabilitar si NO está seleccionado y NO alcanza el stock. 
+                                  // Si ya está seleccionado debe poder desmarcarse siempre.
+                                  disabled={!item.selected && !hasStock}
+                                  className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${!item.selected && !hasStock ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                                 />
                               </td>
                               <td className="px-5 py-4">
@@ -703,7 +744,7 @@ const RenewalsPage = () => {
                               <td className="px-5 py-4 text-center">
                                 {hasStock ? (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                                    Stock: {itemData.stock_current}
+                                    Stock: {effectiveStock} {otherSelectedQty > 0 && `(-${otherSelectedQty} reserv.)`}
                                   </span>
                                 ) : (
                                   <div className="flex flex-col items-center gap-1">
