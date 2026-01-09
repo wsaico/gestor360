@@ -60,7 +60,11 @@ class AuthService {
         is_active: userData.is_active
       }
 
-      const station = userData.stations || null
+      // Formatear datos de la estación (manejar si viene como objeto o array de 1 elemento)
+      let station = null
+      if (userData.stations) {
+        station = Array.isArray(userData.stations) ? userData.stations[0] : userData.stations
+      }
 
       // Guardar datos en localStorage
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, authData.session.access_token)
@@ -176,6 +180,32 @@ class AuthService {
    */
   getAccessToken() {
     return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
+  }
+  /**
+   * Registra un nuevo usuario
+   * @param {string} email - Email del usuario
+   * @param {string} password - Contraseña
+   * @param {string} username - Nombre de usuario
+   * @returns {Promise<Object>}
+   */
+  async register(email, password, username) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username
+          }
+        }
+      })
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Registration error:', error)
+      throw error
+    }
   }
 }
 

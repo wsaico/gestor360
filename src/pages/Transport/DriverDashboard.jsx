@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Swal from 'sweetalert2'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -42,43 +42,155 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
+// --- MAP HELPER ---
+const MapInvalidator = () => {
+    const map = useMap();
+    useEffect(() => {
+        // Force map resize recalculation after mount
+        const timer = setTimeout(() => {
+            map.invalidateSize();
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [map]);
+    return null;
+}
+
 
 // --- HELPER COMPONENTS ---
 
-const MapView = ({ location, destination }) => {
-    console.log('🗺️ MapView rendering with location:', location)
+const MapView = ({ location, destination, origin, passengers = [] }) => {
+    console.log('🗺️ MapView', { location, destination, origin, paxCount: passengers.length })
     const mapRef = useRef(null)
+    const [jobRoute, setJobRoute] = useState([]) // The full route
+    const [waypoints, setWaypoints] = useState([])
 
-    // Component to update map center when location changes
+    // Component to update map center
     const RecenterMap = ({ lat, lng }) => {
         const map = useMap();
         useEffect(() => {
             if (lat && lng) {
                 map.setView([lat, lng], map.getZoom());
+                // Fit bounds if we have a route
+                // map.fitBounds(bounds) - Optional improvement
             }
         }, [lat, lng, map]);
         return null;
     }
 
-    // Default to Jauja / Aeropuerto area if location is practically null
-    const displayLoc = location || { lat: -11.7752, lng: -75.4983 }
+    // Helper to fetch OSRM geometry with multiple stops
+    const getOsrmRouteMulti = async (points) => {
+        if (points.length < 2) return []
+        try {
+            // Format: lon,lat;lon,lat;...
+            const coordsString = points.map(p => `${p.lng},${p.lat}`).join(';')
+            const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`
+
+            const response = await fetch(url)
+            const data = await response.json()
+            if (data.code === 'Ok' && data.routes?.[0]) {
+                return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]])
+            }
+        } catch (e) {
+            console.error("OSRM Multi Error", e)
+        }
+        // Fallback straight lines
+        return points.map(p => [p.lat, p.lng])
+    }
+
+    // Effect: Calculate Routes
+    useEffect(() => {
+        const calcRoutes = async () => {
+            // 1. Identify Valid Stops
+            const validPassengers = passengers.filter(p => p.lat && p.lng)
+            setWaypoints(validPassengers)
+
+            // 2. Build the Sequence
+            // Sequence: Driver -> [Ordered Passengers] -> Destination
+            // Note: We use existing order of passengers array.
+
+            const points = []
+
+            // A. Start Point: Driver Location (or Origin if specified and driver is far? For now, Driver Location is best start for "Current Trip")
+            // However, user said "Pass by Emp 1, 2, 3... and ends in Destination".
+            // If "Origin" is set (Punto A), maybe flow is Origin -> P1 -> P2 -> Dest?
+            // Let's assume Driver Location is the true start of the *current nav leg*.
+            const startPoint = location || origin || { lat: -11.7752, lng: -75.4983 }
+            points.push(startPoint)
+
+            // B. Waypoints (Passengers)
+            validPassengers.forEach(p => points.push({ lat: p.lat, lng: p.lng }))
+
+            // C. Destination
+            if (destination) {
+                points.push({ lat: destination.lat, lng: destination.lng })
+            } else if (points.length === 1 && origin) {
+                // specific case where maybe we go back to origin?
+                // For now, if no dest, just show points.
+            }
+
+            // Calculate
+            if (points.length >= 2) {
+                const route = await getOsrmRouteMulti(points)
+                setJobRoute(route)
+            }
+        }
+        calcRoutes()
+    }, [origin?.lat, origin?.lng, destination?.lat, destination?.lng, location?.lat, location?.lng, passengers])
+
+    // Center display
+    const displayLoc = location || origin || { lat: -11.7752, lng: -75.4983 }
 
     return (
         <div className="w-full h-[500px] bg-slate-100 dark:bg-slate-900">
             <MapContainer
                 center={[displayLoc.lat, displayLoc.lng]}
-                zoom={15}
+                zoom={14}
                 style={{ height: '500px', width: '100%' }}
                 ref={mapRef}
             >
                 <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution='&copy; OpenStreetMap contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
+
+                {/* Driver */}
                 <Marker position={[displayLoc.lat, displayLoc.lng]}>
-                    <Popup>{location ? "Tu Ubicación" : "Ubicación Estimada (Esperando GPS...)"}</Popup>
+                    <Popup>{location ? "Tú (Conductor)" : "Sin señal GPS"}</Popup>
                 </Marker>
+
+                {/* Origin (Punto A) - Optional reference */}
+                {origin && (
+                    <Marker position={[origin.lat, origin.lng]}>
+                        <Popup>🟢 ORIGEN BASE: {origin.address}</Popup>
+                    </Marker>
+                )}
+
+                {/* Passengers Waypoints */}
+                {waypoints.map((p, idx) => (
+                    <Marker key={p.id || idx} position={[p.lat, p.lng]} opacity={0.9}>
+                        <Popup>🧑‍🤝‍🧑 {idx + 1}. {p.full_name}<br />{p.address}</Popup>
+                    </Marker>
+                ))}
+
+                {/* Destination (Punto B) */}
+                {destination && (
+                    <Marker position={[destination.lat, destination.lng]}>
+                        <Popup>🏁 DESTINO: {destination.address}</Popup>
+                    </Marker>
+                )}
+
+                {/* Full Route (Blue Solid) */}
+                {jobRoute.length > 0 && (
+                    <Polyline
+                        positions={jobRoute}
+                        color="blue"
+                        weight={5}
+                        opacity={0.8}
+                    />
+                )}
+
                 <RecenterMap lat={displayLoc.lat} lng={displayLoc.lng} />
+                <MapInvalidator />
             </MapContainer>
         </div>
     )
@@ -598,7 +710,12 @@ const DriverDashboard = () => {
         try {
             const rawData = await transportService.getPassengersForSchedule(schedule.id)
             // Map RPC pax_id back to id for UI compatibility
-            const paxData = rawData.map(p => ({ ...p, id: p.pax_id }))
+            // Ensure ID is a string for consistent comparison
+            const paxData = rawData.map(p => ({
+                ...p,
+                id: String(p.pax_id || p.id),
+                original_id: p.id
+            }))
             setPassengers(paxData)
         } catch (e) {
             console.error("Error loading passengers via RPC:", e)
@@ -630,16 +747,34 @@ const DriverDashboard = () => {
     // --- LOGIC ---
 
     const startGpsTracking = (executionId) => {
-        if (!navigator.geolocation) return
+        if (!navigator.geolocation) {
+            Swal.fire('Error', 'Geolocalización no soportada en este navegador', 'error')
+            return
+        }
+
+        // Check for Secure Context (HTTPS or Localhost)
+        if (!window.isSecureContext) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Contexto No Seguro',
+                text: 'El GPS requiere HTTPS o Localhost. Si estás probando desde celular por IP, el GPS no funcionará.',
+            })
+        }
+
         setGpsActive(true)
+        console.log("📍 Starting GPS Watch...")
+
         watchIdRef.current = navigator.geolocation.watchPosition(
             (pos) => {
                 const loc = {
                     lat: pos.coords.latitude,
                     lng: pos.coords.longitude,
                     speed: pos.coords.speed,
+                    heading: pos.coords.heading,
+                    accuracy: pos.coords.accuracy,
                     timestamp: pos.timestamp
                 }
+                console.log("📍 New Gps Position:", loc)
                 setCurrentLocation(loc)
 
                 // Throttle Server Updates (10s)
@@ -650,12 +785,28 @@ const DriverDashboard = () => {
                 }
             },
             (err) => {
-                // Silenciar timeout errors en desarrollo (localhost no siempre tiene GPS)
-                if (err.code !== 3) { // 3 = TIMEOUT
-                    console.warn('GPS Error:', err.message)
-                }
+                console.error("📍 GPS Error:", err)
+                let msg = `Error GPS (${err.code}): ${err.message}`
+                if (err.code === 1) msg = "Permiso GPS denegado por el usuario."
+                if (err.code === 2) msg = "Ubicación no disponible (enciende el GPS)."
+                if (err.code === 3) msg = "Tiempo de espera agotado buscando GPS."
+
+                // Show localized error
+                const Toast = Swal.mixin({
+                    toast: true,
+                    position: 'bottom-end',
+                    showConfirmButton: false,
+                    timer: 5000,
+                    background: '#ef4444',
+                    color: '#fff'
+                })
+                Toast.fire({ icon: 'error', title: 'GPS Error', text: msg })
             },
-            { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+            {
+                enableHighAccuracy: true,
+                timeout: 30000,
+                maximumAge: 5000
+            }
         )
     }
 
@@ -781,6 +932,9 @@ const DriverDashboard = () => {
             setViewMode('list')
             setCheckedPax([])
 
+            // Remove the finished schedule from the list immediately
+            setSchedules(prev => prev.filter(s => s.id !== activeSchedule.id))
+
             // Clear localStorage for this trip
             if (activeSchedule) {
                 localStorage.removeItem(`trip_checks_${activeSchedule.id}`)
@@ -797,9 +951,9 @@ const DriverDashboard = () => {
     }
 
     const processCheckIn = useCallback((pax, status = 'BOARDED') => {
-        if (!pax) return
+        if (!pax || !pax.id) return
 
-        const alreadyChecked = checkedPax.find(c => c.employee_id === pax.id)
+        const alreadyChecked = checkedPax.find(c => String(c.employee_id) === String(pax.id))
         if (alreadyChecked && alreadyChecked.status === status) return
 
         const newRecord = {
@@ -811,7 +965,7 @@ const DriverDashboard = () => {
         }
 
         setCheckedPax(prev => {
-            const filtered = prev.filter(c => c.employee_id !== pax.id)
+            const filtered = prev.filter(c => String(c.employee_id) !== String(pax.id))
             return [...filtered, newRecord]
         })
 
@@ -1002,7 +1156,7 @@ const DriverDashboard = () => {
                         </motion.div>
                     )}
 
-                    {viewMode === 'active' && activeSchedule && (
+                    {(viewMode === 'active' || viewMode === 'map') && activeSchedule && (
                         <motion.div
                             key="active"
                             initial={{ opacity: 0, scale: 0.95 }}
@@ -1073,7 +1227,7 @@ const DriverDashboard = () => {
                                         <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-3 px-2 pt-2">Manifiesto de Pasajeros</h3>
                                         <div className="flex-1 overflow-y-auto space-y-3 pb-4 noscrollbar px-2">
                                             {passengers.map(p => {
-                                                const record = checkedPax.find(c => c.employee_id === p.id)
+                                                const record = checkedPax.find(c => String(c.employee_id) === String(p.id))
                                                 const isBoarded = record?.status === 'BOARDED'
                                                 const isNoShow = record?.status === 'NO_SHOW'
 

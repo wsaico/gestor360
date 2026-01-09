@@ -237,6 +237,13 @@ const SettingsPage = () => {
             <Settings className="w-4 h-4 mr-2" />
             Personalización
           </button>
+          <button
+            onClick={() => setActiveTab('security')}
+            className={`${activeTab === 'security' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+          >
+            <Shield className="w-4 h-4 mr-2" />
+            Seguridad
+          </button>
         </nav>
       </div>
 
@@ -571,6 +578,46 @@ const SettingsPage = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="space-y-6">
+            <div className="bg-amber-50 p-4 rounded-lg flex items-start space-x-3">
+              <Shield className="w-5 h-5 text-amber-600 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-amber-900">Políticas de Acceso Público</h4>
+                <p className="text-sm text-amber-700 mt-1">
+                  Controla quién puede acceder y crear cuentas en tu plataforma. Activar el registro público permite que cualquier persona con el link se una como Operador.
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between py-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Registro Autónomo de Usuarios</h3>
+                  <p className="text-sm text-gray-500">Permitir que nuevos usuarios creen sus propias cuentas desde el login.</p>
+                </div>
+                <button
+                  onClick={() => toggleSetting('ENABLE_PUBLIC_REGISTRATION')}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isEnabled('ENABLE_PUBLIC_REGISTRATION') ? 'bg-primary-600' : 'bg-gray-200'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isEnabled('ENABLE_PUBLIC_REGISTRATION') ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-xl mt-4 border border-gray-100">
+                <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-primary-500" /> Nota de Configuración
+                </h5>
+                <ul className="text-xs text-gray-500 space-y-2 list-disc ml-4">
+                  <li>Los nuevos usuarios registrados tendrán el rol de <b>OPERADOR</b> por defecto.</li>
+                  <li>Deberás asignarles una estación manualmente después de que se registren.</li>
+                  <li>Puedes desactivar esta opción en cualquier momento para bloquear nuevos registros.</li>
+                </ul>
               </div>
             </div>
           </div>

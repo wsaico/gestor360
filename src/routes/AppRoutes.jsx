@@ -7,6 +7,8 @@ import MainLayout from '@components/layout/MainLayout'
 
 // Páginas públicas
 import LoginPage from '@pages/auth/LoginPage'
+import RegisterPage from '@pages/auth/RegisterPage'
+import ForgotPasswordPage from '@pages/auth/ForgotPasswordPage'
 
 // Páginas protegidas
 import DashboardPage from '@pages/dashboard/DashboardPage'
@@ -104,6 +106,8 @@ const AppRoutes = () => {
 
       {/* Rutas públicas */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/menu" element={<PublicMenuPage />} />
       <Route path="/transport/driver-login" element={<DriverLoginPage />} />
       <Route path="/transport/driver-dashboard" element={<DriverDashboard />} />

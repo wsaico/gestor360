@@ -190,18 +190,22 @@ const birthDate = employee.birth_date
 // 2. Calcular próximo cumpleaños
 const daysUntilBirthday = calculateDaysUntilBirthday(birthDate)
 
-// 3. Filtrar alertas (mostrar solo próximos 30 días)
-if (daysUntilBirthday <= 30) {
-  showAlert = true
+// 3. Filtrar alertas (Slot Estricto)
+if (isTodaySlot) {
+  // 6 AM - 11 AM: Solo Hoy
+  if (isToday) showAlert = true;
+} else if (isTomorrowSlot) {
+  // 6 PM - 11 PM: Solo Mañana
+  if (isTomorrow) showAlert = true;
 }
 
-// 4. Destacar especiales
-if (daysUntilBirthday === 0) {
-  message = '¡Cumpleaños hoy! 🎉'
-} else if (daysUntilBirthday === 1) {
-  message = 'Cumpleaños mañana'
+// 4. Asunto y Formato
+if (isToday) {
+  subject = '🎂 Hoy celebramos el cumpleaños de...'
+  label = '¡Es HOY! 🎂'
 } else {
-  message = `En ${daysUntilBirthday} días`
+  subject = '🎈 Mañana celebramos cumpleaños en el equipo'
+  label = 'Mañana 🎈'
 }
 ```
 

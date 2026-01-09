@@ -3,41 +3,41 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 // --- HELPER: Date Formatting ---
 const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 // --- HELPER: Professional HTML Template v3.0 (Premium Design) ---
 const generateEmailTemplate = (
-    title: string,
-    contentHtml: string,
-    settings: any,
-    options: { showButton?: boolean } = { showButton: true }
+  title: string,
+  contentHtml: string,
+  settings: any,
+  options: { showButton?: boolean } = { showButton: true }
 ) => {
-    const companyName = settings.get("COMPANY_NAME") || "Gestor360";
-    const logoUrl = settings.get("COMPANY_LOGO_URL") || "https://placehold.co/200x50?text=Gestor360";
-    const companyAddress = settings.get("COMPANY_ADDRESS") || "Plataforma de Gestión Operativa";
+  const companyName = settings.get("COMPANY_NAME") || "Gestor360";
+  const logoUrl = settings.get("COMPANY_LOGO_URL") || "https://placehold.co/200x50?text=Gestor360";
+  const companyAddress = settings.get("COMPANY_ADDRESS") || "Plataforma de Gestión Operativa";
 
-    // Theme Detection
-    const isBirthday = title.toLowerCase().includes("cumpleaños");
-    const isUrgent = title.includes("⚠️") || title.includes("🚨");
+  // Theme Detection
+  const isBirthday = title.toLowerCase().includes("cumpleaños");
+  const isUrgent = title.includes("⚠️") || title.includes("🚨");
 
-    // Dynamic Colors Based on Context
-    const primaryColor = isBirthday ? "#f59e0b" : (isUrgent ? "#dc2626" : "#2563eb");
-    const headerGradient = isBirthday
-        ? "linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)"
-        : (isUrgent
-            ? "linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)"
-            : "linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)");
+  // Dynamic Colors Based on Context
+  const primaryColor = isBirthday ? "#f59e0b" : (isUrgent ? "#dc2626" : "#2563eb");
+  const headerGradient = isBirthday
+    ? "linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)"
+    : (isUrgent
+      ? "linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)"
+      : "linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)");
 
-    return `
+  return `
     <!DOCTYPE html>
     <html lang="es">
     <head>
@@ -371,63 +371,63 @@ const generateEmailTemplate = (
 };
 
 serve(async (req) => {
-    if (req.method === "OPTIONS") {
-        return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    console.log("Starting send-email-alerts function v3.0 (Premium Design)");
+
+    // 1. Initialize Supabase Client
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    // 2. Load Configuration
+    const { data: settingsData, error: settingsError } = await supabaseClient
+      .from("app_settings")
+      .select("*");
+
+    if (settingsError) throw settingsError;
+
+    const settingsMap = new Map();
+    settingsData?.forEach(s => settingsMap.set(s.key, s.value));
+    const getSetting = (key: string) => settingsMap.get(key);
+    const isEnabled = (key: string) => getSetting(key) === "true";
+    console.log(`Settings loaded. Global Enabled: ${isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")}`);
+
+    if (!isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")) {
+      return new Response(JSON.stringify({ message: "Notifications disabled globally" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    try {
-        console.log("Starting send-email-alerts function v3.0 (Premium Design)");
+    const brevoKey = getSetting("BREVO_API_KEY");
+    const senderEmail = getSetting("SMTP_SENDER_EMAIL") || "no-reply@gestor360.com";
 
-        // 1. Initialize Supabase Client
-        const supabaseClient = createClient(
-            Deno.env.get("SUPABASE_URL") ?? "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-        );
+    if (!settingsData || settingsData.length === 0 || !brevoKey) {
+      const visibleKeys = settingsData?.map(s => s.key).join(", ");
+      throw new Error(`DEBUG: Configuration Error. Keys visible: [${visibleKeys}]`);
+    }
 
-        // 2. Load Configuration
-        const { data: settingsData, error: settingsError } = await supabaseClient
-            .from("app_settings")
-            .select("*");
+    let body: any = {};
+    try { body = await req.json(); } catch (e) { }
 
-        if (settingsError) throw settingsError;
+    // --- WEBHOOK MODE (Real-time Stock) ---
+    if (body.record && body.type === 'UPDATE' && body.table === 'epp_items') {
+      const item = body.record;
+      if (isEnabled("ENABLE_ALERT_LOW_STOCK") && item.stock_current <= item.stock_min) {
+        const { data: supervisors } = await supabaseClient
+          .from("system_users")
+          .select("email, first_name")
+          .eq("station_id", item.station_id)
+          .in("role", ["SUPERVISOR", "ADMIN"]);
 
-        const settingsMap = new Map();
-        settingsData?.forEach(s => settingsMap.set(s.key, s.value));
-        const getSetting = (key: string) => settingsMap.get(key);
-        const isEnabled = (key: string) => getSetting(key) === "true";
-        console.log(`Settings loaded. Global Enabled: ${isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")}`);
-
-        if (!isEnabled("ENABLE_NOTIFICATIONS_GLOBAL")) {
-            return new Response(JSON.stringify({ message: "Notifications disabled globally" }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        const brevoKey = getSetting("BREVO_API_KEY");
-        const senderEmail = getSetting("SMTP_SENDER_EMAIL") || "no-reply@gestor360.com";
-
-        if (!settingsData || settingsData.length === 0 || !brevoKey) {
-            const visibleKeys = settingsData?.map(s => s.key).join(", ");
-            throw new Error(`DEBUG: Configuration Error. Keys visible: [${visibleKeys}]`);
-        }
-
-        let body: any = {};
-        try { body = await req.json(); } catch (e) { }
-
-        // --- WEBHOOK MODE (Real-time Stock) ---
-        if (body.record && body.type === 'UPDATE' && body.table === 'epp_items') {
-            const item = body.record;
-            if (isEnabled("ENABLE_ALERT_LOW_STOCK") && item.stock_current <= item.stock_min) {
-                const { data: supervisors } = await supabaseClient
-                    .from("system_users")
-                    .select("email, first_name")
-                    .eq("station_id", item.station_id)
-                    .in("role", ["SUPERVISOR", "ADMIN"]);
-
-                if (supervisors && supervisors.length > 0) {
-                    const html = generateEmailTemplate(
-                        "⚠️ Alerta de Stock Crítico",
-                        `<p class="email-text">El siguiente ítem ha alcanzado el nivel mínimo de inventario y requiere atención inmediata.</p>
+        if (supervisors && supervisors.length > 0) {
+          const html = generateEmailTemplate(
+            "⚠️ Alerta de Stock Crítico",
+            `<p class="email-text">El siguiente ítem ha alcanzado el nivel mínimo de inventario y requiere atención inmediata.</p>
                          <div class="alert-card">
                             <div class="alert-header">
                                 <span>Stock Crítico</span>
@@ -440,225 +440,257 @@ serve(async (req) => {
                                 </li>
                             </ul>
                          </div>`,
-                        settingsMap
-                    );
+            settingsMap
+          );
 
-                    for (const recipient of supervisors) {
-                        if (!recipient.email) continue;
-                        await fetch("https://api.brevo.com/v3/smtp/email", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", "api-key": brevoKey },
-                            body: JSON.stringify({
-                                sender: { email: senderEmail, name: "Gestor360 Stock" },
-                                to: [{ email: recipient.email, name: recipient.first_name }],
-                                subject: `[Gestor360] 🚨 Stock Crítico: ${item.name}`,
-                                htmlContent: html,
-                            }),
-                        });
-                    }
-                }
-            }
-            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-
-        // --- TEST/GENERIC SEND ---
-        if (body.action === 'test_connection' || body.action === 'send_email') {
-            const targetEmail = body.email || body.to;
-            const subject = body.subject || "✅ Test de Conexión | Gestor360";
-            const html = body.html || generateEmailTemplate("Test Connection", "<p>Success</p>", settingsMap);
-
-            const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "api-key": brevoKey },
-                body: JSON.stringify({
-                    sender: { email: senderEmail, name: "Gestor360 System" },
-                    to: [{ email: targetEmail }],
-                    subject: subject,
-                    htmlContent: html,
-                }),
+          for (const recipient of supervisors) {
+            if (!recipient.email) continue;
+            await fetch("https://api.brevo.com/v3/smtp/email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "api-key": brevoKey },
+              body: JSON.stringify({
+                sender: { email: senderEmail, name: "Gestor360 Stock" },
+                to: [{ email: recipient.email, name: recipient.first_name }],
+                subject: `[Gestor360] 🚨 Stock Crítico: ${item.name}`,
+                htmlContent: html,
+              }),
             });
-            if (!res.ok) throw new Error(`Brevo Error: ${await res.text()}`);
-            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
         }
+      }
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
-        // 3. COLLECT ALERTS (Scheduled or Direct run)
-        const allAlerts: any[] = [];
-        const nowPeru = new Date(new Intl.DateTimeFormat('en-US', {
-            timeZone: 'America/Lima',
-            year: 'numeric', month: 'numeric', day: 'numeric',
-            hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
-        }).format(new Date()));
-        const currentHour = nowPeru.getHours();
-        const today = new Date(nowPeru);
-        today.setHours(0, 0, 0, 0);
+    // --- TEST/GENERIC SEND ---
+    if (body.action === 'test_connection' || body.action === 'send_email') {
+      const targetEmail = body.email || body.to;
+      const subject = body.subject || "✅ Test de Conexión | Gestor360";
+      const html = body.html || generateEmailTemplate("Test Connection", "<p>Success</p>", settingsMap);
 
-        // --- A. EPP Renewals ---
-        if (isEnabled("ENABLE_ALERT_EPPS")) {
-            const { data: epps } = await supabaseClient.from("vw_renewals_pending").select("*").lt("days_until_renewal", 30);
-            if (epps) {
-                const allowedDays = [30, 15, 7, 3, 1, 0];
-                epps.filter(e => allowedDays.includes(e.days_until_renewal)).forEach(e => {
-                    allAlerts.push({
-                        station_id: e.station_id,
-                        type: 'RENOVACIÓN EPP',
-                        text: `${e.full_name} - ${e.item_name}`,
-                        meta: e.days_until_renewal === 0 ? '¡VENCE HOY!' : `Vence en ${e.days_until_renewal} días (${formatDate(e.renewal_date)})`,
-                        urgent: e.days_until_renewal <= 7
-                    });
-                });
+      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "api-key": brevoKey },
+        body: JSON.stringify({
+          sender: { email: senderEmail, name: "Gestor360 System" },
+          to: [{ email: targetEmail }],
+          subject: subject,
+          htmlContent: html,
+        }),
+      });
+      if (!res.ok) throw new Error(`Brevo Error: ${await res.text()}`);
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // 3. COLLECT ALERTS (Scheduled or Direct run)
+    const allAlerts: any[] = [];
+    const nowPeru = new Date(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Lima',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
+    }).format(new Date()));
+    const currentHour = nowPeru.getHours();
+    const today = new Date(nowPeru);
+    today.setHours(0, 0, 0, 0);
+
+    // --- A. EPP Renewals ---
+    if (isEnabled("ENABLE_ALERT_EPPS")) {
+      const { data: epps } = await supabaseClient.from("vw_renewals_pending").select("*").lt("days_until_renewal", 30);
+      if (epps) {
+        const allowedDays = [30, 15, 7, 3, 1, 0];
+        epps.filter(e => allowedDays.includes(e.days_until_renewal)).forEach(e => {
+          allAlerts.push({
+            station_id: e.station_id,
+            type: 'RENOVACIÓN EPP',
+            text: `${e.full_name} - ${e.item_name}`,
+            meta: e.days_until_renewal === 0 ? '¡VENCE HOY!' : `Vence en ${e.days_until_renewal} días (${formatDate(e.renewal_date)})`,
+            urgent: e.days_until_renewal <= 7
+          });
+        });
+      }
+    }
+
+    // --- B. Low Stock ---
+    if (isEnabled("ENABLE_ALERT_LOW_STOCK")) {
+      const { data: allItems } = await supabaseClient.from("epp_items").select("*").eq("is_active", true);
+      if (allItems) {
+        allItems.filter(i => i.stock_current <= i.stock_min).forEach(i => {
+          allAlerts.push({
+            station_id: i.station_id,
+            type: 'STOCK CRÍTICO',
+            text: i.name,
+            meta: `Stock: ${i.stock_current} / Min: ${i.stock_min}`,
+            urgent: true
+          });
+        });
+      }
+    }
+
+    // --- C. Birthdays (Window: 6am-11am for Today, 6pm-23pm for Tomorrow) ---
+    if (isEnabled("ENABLE_ALERT_BIRTHDAYS")) {
+      const isManual = body.action === 'send_email';
+      const isTodaySlot = currentHour >= 6 && currentHour <= 11;
+      const isTomorrowSlot = currentHour >= 18 && currentHour <= 23;
+
+      if (isTodaySlot || isTomorrowSlot || isManual) {
+        const { data: employees } = await supabaseClient.from("employees").select("*").neq("status", "CESADO").not("birth_date", "is", null);
+        if (employees) {
+          const bdaysByStation: Record<string, any[]> = {};
+          employees.forEach(emp => {
+            // Safe parsing: birth_date is YYYY-MM-DD
+            const parts = emp.birth_date.split('-');
+            if (parts.length !== 3) return;
+            const bMonth = parseInt(parts[1]) - 1; // 0-indexed
+            const bDay = parseInt(parts[2]);
+
+            const isToday = today.getMonth() === bMonth && today.getDate() === bDay;
+            const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+            const isTomorrow = tomorrow.getMonth() === bMonth && tomorrow.getDate() === bDay;
+
+            let shouldNotify = false;
+            let label = "";
+
+            // Strict slot logic
+            if (isToday && (isTodaySlot || (isManual && currentHour < 12))) {
+              shouldNotify = true;
+              label = "¡Es HOY! 🎂";
             }
-        }
-
-        // --- B. Low Stock ---
-        if (isEnabled("ENABLE_ALERT_LOW_STOCK")) {
-            const { data: allItems } = await supabaseClient.from("epp_items").select("*").eq("is_active", true);
-            if (allItems) {
-                allItems.filter(i => i.stock_current <= i.stock_min).forEach(i => {
-                    allAlerts.push({
-                        station_id: i.station_id,
-                        type: 'STOCK CRÍTICO',
-                        text: i.name,
-                        meta: `Stock: ${i.stock_current} / Min: ${i.stock_min}`,
-                        urgent: true
-                    });
-                });
+            else if (isTomorrow && (isTomorrowSlot || (isManual && currentHour >= 12))) {
+              shouldNotify = true;
+              label = "Mañana 🎈";
             }
-        }
 
-        // --- C. Birthdays (Window: 6am-9am for Today, 6pm-21pm for Tomorrow, or Manual) ---
-        if (isEnabled("ENABLE_ALERT_BIRTHDAYS")) {
-            const isManual = !body.action || body.action === 'send_email';
-            const isTodaySlot = currentHour >= 6 && currentHour <= 9;
-            const isTomorrowSlot = currentHour >= 18 && currentHour <= 21;
+            if (shouldNotify) {
+              const sId = emp.station_id || 'GENERAL';
+              if (!bdaysByStation[sId]) bdaysByStation[sId] = [];
+              bdaysByStation[sId].push({ name: emp.full_name, label: label, isToday: isToday });
+              // Note: We no longer add to allAlerts to avoid duplication in the summary email
+            }
+          });
 
-            if (isTodaySlot || isTomorrowSlot || isManual) {
-                const { data: employees } = await supabaseClient.from("employees").select("*").neq("status", "CESADO").not("birth_date", "is", null);
-                if (employees) {
-                    const bdaysByStation: Record<string, any[]> = {};
-                    employees.forEach(emp => {
-                        const dob = new Date(emp.birth_date);
-                        const bMonth = dob.getMonth();
-                        const bDay = dob.getDate();
-                        const isToday = today.getMonth() === bMonth && today.getDate() === bDay;
-                        const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-                        const isTomorrow = tomorrow.getMonth() === bMonth && tomorrow.getDate() === bDay;
+          for (const [sId, sBdays] of Object.entries(bdaysByStation)) {
+            // 1. Get system users (excluding PROVIDERS) for this station
+            const { data: systemUsers } = await supabaseClient.from("system_users")
+              .select("email, first_name")
+              .eq("station_id", sId)
+              .neq("role", "PROVIDER");
 
-                        let shouldNotify = false;
-                        let label = "";
-                        if (isToday && (isTodaySlot || isManual)) { shouldNotify = true; label = "¡Es HOY! 🎂"; }
-                        else if (isTomorrow && (isTomorrowSlot || isManual)) { shouldNotify = true; label = "Mañana 🎈"; }
+            // 2. Get active employees for this station
+            const { data: stationEmployees } = await supabaseClient.from("employees")
+              .select("email, full_name")
+              .eq("station_id", sId)
+              .neq("status", "CESADO");
 
-                        if (shouldNotify) {
-                            const sId = emp.station_id || 'GENERAL';
-                            if (!bdaysByStation[sId]) bdaysByStation[sId] = [];
-                            bdaysByStation[sId].push({ name: emp.full_name, label: label, isToday: isToday });
-                            allAlerts.push({ station_id: emp.station_id, type: 'CUMPLEAÑOS', text: emp.full_name, meta: label, urgent: isToday });
-                        }
-                    });
+            // 3. Merge and Deduplicate emails
+            const uniqueRecipients = new Map();
 
-                    for (const [sId, sBdays] of Object.entries(bdaysByStation)) {
-                        const { data: stationUsers } = await supabaseClient.from("system_users")
-                            .select("*")
-                            .eq("station_id", sId);
+            // Add system users first
+            systemUsers?.forEach((u: { email: string; first_name?: string }) => {
+              if (u.email) uniqueRecipients.set(u.email.toLowerCase(), u.first_name || u.email);
+            });
 
-                        if (stationUsers && stationUsers.length > 0) {
-                            const bdayHtml = generateEmailTemplate(
-                                "Cumpleaños del Equipo 🎂",
-                                `<p class="email-text">¡Celebremos juntos a nuestros compañeros de equipo!</p>
+            // Add employees (they won't overwrite system users if emails match)
+            stationEmployees?.forEach((e: { email: string; full_name: string }) => {
+              if (e.email && !uniqueRecipients.has(e.email.toLowerCase())) {
+                uniqueRecipients.set(e.email.toLowerCase(), e.full_name);
+              }
+            });
+
+            if (uniqueRecipients.size > 0) {
+              const bdayHtml = generateEmailTemplate(
+                "Cumpleaños del Equipo 🎂",
+                `<p class="email-text">¡Celebremos juntos a nuestros compañeros de equipo!</p>
                                  <div class="alert-card">
                                     <div class="alert-header"><span>Próximos Cumpleaños</span><span class="alert-count">${sBdays.length}</span></div>
                                     <ul class="alert-list">
                                         ${sBdays.map(b => `<li class="alert-item"><span class="alert-main">${b.name}</span><span class="alert-badge${b.isToday ? ' urgent' : ''}">${b.label}</span></li>`).join('')}
                                     </ul>
                                  </div>`,
-                                settingsMap, { showButton: false }
-                            );
-                            const mainBday = sBdays[0];
-                            const subject = (isTomorrowSlot && !isTodaySlot)
-                                ? `🎈 Mañana celebramos cumpleaños en el equipo`
-                                : `🎂 Hoy celebramos el cumpleaños de ${mainBday.name}${sBdays.length > 1 ? ' y otros compañeros' : ''}`;
+                settingsMap, { showButton: false }
+              );
+              const mainBday = sBdays[0];
+              const subject = isTodaySlot
+                ? `🎂 Hoy celebramos el cumpleaños de ${mainBday.name}${sBdays.length > 1 ? ' y otros compañeros' : ''}`
+                : `🎈 Mañana celebramos cumpleaños en el equipo`;
 
-                            for (const user of stationUsers) {
-                                if (user.email) {
-                                    await fetch("https://api.brevo.com/v3/smtp/email", {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json", "api-key": brevoKey },
-                                        body: JSON.stringify({
-                                            sender: { email: senderEmail, name: "Gestor360 Social" },
-                                            to: [{ email: user.email }],
-                                            subject: subject,
-                                            htmlContent: bdayHtml,
-                                        }),
-                                    }).catch(() => { });
-                                }
-                            }
-                        }
-                    }
-                }
+              for (const [email, name] of uniqueRecipients.entries()) {
+                await fetch("https://api.brevo.com/v3/smtp/email", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "api-key": brevoKey },
+                  body: JSON.stringify({
+                    sender: { email: senderEmail, name: "Gestor360 Social" },
+                    to: [{ email: email, name: name }],
+                    subject: subject,
+                    htmlContent: bdayHtml,
+                  }),
+                }).catch(() => { });
+              }
             }
+          }
         }
+      }
+    }
 
-        // --- D. Documents ---
-        if (isEnabled("ENABLE_ALERT_EMO") || isEnabled("ENABLE_ALERT_PHOTOCHECK")) {
-            const limitDate = new Date(today); limitDate.setDate(today.getDate() + 35);
-            const { data: docs } = await supabaseClient.from("employee_docs").select("*, employee:employees(*)").in("doc_type", ["EMO", "PHOTOCHECK", "FOTOCHECK"]).gte("expiry_date", today.toISOString().split('T')[0]).lte("expiry_date", limitDate.toISOString().split('T')[0]);
-            if (docs) {
-                const allowedDays = [30, 15, 7, 3, 1, 0];
-                for (const doc of docs) {
-                    if (doc.employee?.status === 'CESADO') continue;
-                    const exp = new Date(doc.expiry_date); exp.setHours(0, 0, 0, 0);
-                    const diff = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                    if (!allowedDays.includes(diff)) continue;
+    // --- D. Documents ---
+    if (isEnabled("ENABLE_ALERT_EMO") || isEnabled("ENABLE_ALERT_PHOTOCHECK")) {
+      const limitDate = new Date(today); limitDate.setDate(today.getDate() + 35);
+      const { data: docs } = await supabaseClient.from("employee_docs").select("*, employee:employees(*)").in("doc_type", ["EMO", "PHOTOCHECK", "FOTOCHECK"]).gte("expiry_date", today.toISOString().split('T')[0]).lte("expiry_date", limitDate.toISOString().split('T')[0]);
+      if (docs) {
+        const allowedDays = [30, 15, 7, 3, 1, 0];
+        for (const doc of docs) {
+          if (doc.employee?.status === 'CESADO') continue;
+          const exp = new Date(doc.expiry_date); exp.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (!allowedDays.includes(diff)) continue;
 
-                    const typeLabel = (doc.doc_type === 'EMO') ? 'EXAMEN MÉDICO' : 'FOTOCHECK';
-                    const isTypeEnabled = (doc.doc_type === 'EMO') ? isEnabled("ENABLE_ALERT_EMO") : isEnabled("ENABLE_ALERT_PHOTOCHECK");
-                    if (isTypeEnabled) {
-                        allAlerts.push({ station_id: doc.employee?.station_id, type: `VENCIMIENTO ${typeLabel}`, text: doc.employee?.full_name, meta: diff === 0 ? '¡VENCE HOY!' : `Vence en ${diff} días`, urgent: diff <= 7 });
-                        if (doc.employee?.email) {
-                            const userHtml = generateEmailTemplate(`⚠️ Vencimiento de ${typeLabel}`, `<p class="email-text">Hola <strong>${doc.employee.full_name}</strong>,</p><p class="email-text">Tu documento <strong>${typeLabel}</strong> vence en ${diff === 0 ? 'HOY' : `${diff} días`}.</p>`, settingsMap, { showButton: false });
-                            await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "Content-Type": "application/json", "api-key": brevoKey }, body: JSON.stringify({ sender: { email: senderEmail, name: "Gestor360 Alertas" }, to: [{ email: doc.employee.email }], subject: `⚠️ Tu ${typeLabel} vence pronto`, htmlContent: userHtml }) }).catch(() => { });
-                        }
-                    }
-                }
+          const typeLabel = (doc.doc_type === 'EMO') ? 'EXAMEN MÉDICO' : 'FOTOCHECK';
+          const isTypeEnabled = (doc.doc_type === 'EMO') ? isEnabled("ENABLE_ALERT_EMO") : isEnabled("ENABLE_ALERT_PHOTOCHECK");
+          if (isTypeEnabled) {
+            allAlerts.push({ station_id: doc.employee?.station_id, type: `VENCIMIENTO ${typeLabel}`, text: doc.employee?.full_name, meta: diff === 0 ? '¡VENCE HOY!' : `Vence en ${diff} días`, urgent: diff <= 7 });
+            if (doc.employee?.email) {
+              const userHtml = generateEmailTemplate(`⚠️ Vencimiento de ${typeLabel}`, `<p class="email-text">Hola <strong>${doc.employee.full_name}</strong>,</p><p class="email-text">Tu documento <strong>${typeLabel}</strong> vence en ${diff === 0 ? 'HOY' : `${diff} días`}.</p>`, settingsMap, { showButton: false });
+              await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "Content-Type": "application/json", "api-key": brevoKey }, body: JSON.stringify({ sender: { email: senderEmail, name: "Gestor360 Alertas" }, to: [{ email: doc.employee.email }], subject: `⚠️ Tu ${typeLabel} vence pronto`, htmlContent: userHtml }) }).catch(() => { });
             }
+          }
         }
+      }
+    }
 
-        // 4. GROUP AND SEND TO SUPERVISORS
-        const stations: Record<string, any[]> = {};
-        allAlerts.forEach(a => { const sId = a.station_id || 'GENERAL'; if (!stations[sId]) stations[sId] = []; stations[sId].push(a); });
+    // 4. GROUP AND SEND TO SUPERVISORS
+    const stations: Record<string, any[]> = {};
+    allAlerts.forEach(a => { const sId = a.station_id || 'GENERAL'; if (!stations[sId]) stations[sId] = []; stations[sId].push(a); });
 
-        for (const [sId, sAlerts] of Object.entries(stations) as [string, any[]][]) {
-            const { data: supervisors } = await supabaseClient.from("system_users").select("*").eq("station_id", sId).in("role", ["SUPERVISOR", "ADMIN"]);
-            if (supervisors && supervisors.length > 0) {
-                const alertsByType = {};
-                sAlerts.forEach(a => { if (!alertsByType[a.type]) alertsByType[a.type] = []; alertsByType[a.type].push(a); });
-                let bodyHtml = `<p class="email-text">Resumen de novedades operativas. Revise los siguientes puntos:</p>`;
-                for (const [type, items] of Object.entries(alertsByType)) {
-                    bodyHtml += `<div class="alert-card"><div class="alert-header"><span>${type}</span><span class="alert-count">${items.length}</span></div><ul class="alert-list">
+    for (const [sId, sAlerts] of Object.entries(stations) as [string, any[]][]) {
+      const { data: supervisors } = await supabaseClient.from("system_users").select("*").eq("station_id", sId).in("role", ["SUPERVISOR", "ADMIN"]);
+      if (supervisors && supervisors.length > 0) {
+        const alertsByType = {};
+        sAlerts.forEach(a => { if (!alertsByType[a.type]) alertsByType[a.type] = []; alertsByType[a.type].push(a); });
+        let bodyHtml = `<p class="email-text">Resumen de novedades operativas. Revise los siguientes puntos:</p>`;
+        for (const [type, items] of Object.entries(alertsByType)) {
+          bodyHtml += `<div class="alert-card"><div class="alert-header"><span>${type}</span><span class="alert-count">${items.length}</span></div><ul class="alert-list">
                         ${items.map(item => `<li class="alert-item"><span class="alert-main">${item.text}</span><span class="alert-badge ${item.urgent ? 'urgent' : ''}">${item.meta}</span></li>`).join('')}
                         </ul></div>`;
-                }
-                const finalHtml = generateEmailTemplate(`Resumen Operativo`, bodyHtml, settingsMap);
-                for (const sup of supervisors) {
-                    if (sup.email) {
-                        await fetch("https://api.brevo.com/v3/smtp/email", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", "api-key": brevoKey },
-                            body: JSON.stringify({
-                                sender: { email: senderEmail, name: "Gestor360 Alertas" },
-                                to: [{ email: sup.email }],
-                                subject: `🔔 Resumen: ${sAlerts.length} Novedades | ${formatDate(new Date().toISOString())}`,
-                                htmlContent: finalHtml,
-                            }),
-                        }).catch(() => { });
-                    }
-                }
-            }
         }
-
-        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const finalHtml = generateEmailTemplate(`Resumen Operativo`, bodyHtml, settingsMap);
+        for (const sup of supervisors) {
+          if (sup.email) {
+            await fetch("https://api.brevo.com/v3/smtp/email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "api-key": brevoKey },
+              body: JSON.stringify({
+                sender: { email: senderEmail, name: "Gestor360 Alertas" },
+                to: [{ email: sup.email }],
+                subject: `🔔 Resumen: ${sAlerts.length} Novedades | ${formatDate(new Date().toISOString())}`,
+                htmlContent: finalHtml,
+              }),
+            }).catch(() => { });
+          }
+        }
+      }
     }
+
+    return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 });

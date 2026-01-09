@@ -40,7 +40,10 @@ export const AuthProvider = ({ children }) => {
           const currentStation = authService.getCurrentStation()
 
           setUser(currentUser)
-          setStation(currentStation)
+
+          // Safety: ensure station is an object (not array)
+          const sanitizedStation = Array.isArray(currentStation) ? currentStation[0] : currentStation
+          setStation(sanitizedStation)
           setIsAuthenticated(true)
         } else {
           setUser(null)
@@ -119,6 +122,25 @@ export const AuthProvider = ({ children }) => {
   }
 
   /**
+   * Registra un nuevo usuario
+   * @param {string} email
+   * @param {string} password
+   * @param {string} username
+   */
+  const register = async (email, password, username) => {
+    try {
+      const data = await authService.register(email, password, username)
+      return { success: true, data }
+    } catch (error) {
+      console.error('Register error:', error)
+      return {
+        success: false,
+        error: error.message || 'Error al registrarse'
+      }
+    }
+  }
+
+  /**
    * Cierra sesión
    */
   const logout = async () => {
@@ -179,9 +201,10 @@ export const AuthProvider = ({ children }) => {
    * @param {Object} updatedStation - Datos actualizados de la estación
    */
   const updateStation = (updatedStation) => {
-    setStation(updatedStation)
-    if (updatedStation) {
-      localStorage.setItem('gestor360_station_data', JSON.stringify(updatedStation))
+    const sanitizedStation = Array.isArray(updatedStation) ? updatedStation[0] : updatedStation
+    setStation(sanitizedStation)
+    if (sanitizedStation) {
+      localStorage.setItem('gestor360_station_data', JSON.stringify(sanitizedStation))
     } else {
       localStorage.removeItem('gestor360_station_data')
     }
@@ -208,14 +231,17 @@ export const AuthProvider = ({ children }) => {
    * @returns {string|null} - ID de estación para filtrar, o null para ver todas
    */
   const getEffectiveStationId = (selectedStationId = null) => {
+    // Si se provee un ID explícito (ej: de un selector local), usarlo
+    if (selectedStationId) return selectedStationId
+
     // Si es Global Admin (ADMIN sin estación asignada)
+    // Devolvemos la estación seleccionada en el contexto global (si hay una)
     if (user?.role === 'ADMIN' && !user?.station_id) {
-      // Usar la estación seleccionada en UI, o null para ver todas
-      return selectedStationId || null
+      return station?.id || null
     }
 
-    // Si es Station User (tiene estación asignada)
-    // Siempre usar su estación, ignorar selección
+    // Si es Station User, siempre devolvemos su estación asignada (station?.id) 
+    // lo cual es robusto ya que station se sincroniza con el usuario
     return station?.id || null
   }
 
@@ -227,6 +253,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated,
     login,
+    register,
     logout,
     hasRole,
     hasPermission,

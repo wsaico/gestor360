@@ -25,22 +25,30 @@ class TransportService {
         }
     }
 
-    async createRoute(routeData) {
+    async createRoute(route) {
         try {
-            // Using RPC to bypass complex RLS and ensure integrity
-            const { data, error } = await supabase.rpc('create_transport_route', {
-                p_name: routeData.name,
-                p_organization_id: routeData.organization_id,
-                p_billing_type: routeData.billing_type,
-                p_base_price: routeData.base_price,
-                p_active: routeData.active,
-                p_station_id: routeData.station_id // Added station_id
-            })
+            // Ensure new coordinate fields are included
+            const { data, error } = await supabase
+                .from('transport_routes')
+                .insert([{
+                    name: route.name,
+                    station_id: route.station_id,
+                    organization_id: route.organization_id,
+                    billing_type: route.billing_type,
+                    base_price: route.base_price,
+                    active: route.active,
+                    // New Fields
+                    destination_lat: route.destination_lat,
+                    destination_lng: route.destination_lng,
+                    destination_address: route.destination_address,
+                    origin_lat: route.origin_lat,
+                    origin_lng: route.origin_lng,
+                    origin_address: route.origin_address
+                }])
+                .select('*')
+                .single()
 
             if (error) throw error
-
-            // The RPC returns jsonb, we might need to parse it if it returns a string, 
-            // but Supabase client usually handles json types automatically.
             return data
         } catch (error) {
             console.error('Error creating route:', error)
@@ -52,7 +60,20 @@ class TransportService {
         try {
             const { data, error } = await supabase
                 .from('transport_routes')
-                .update(updates)
+                .update({
+                    name: updates.name,
+                    organization_id: updates.organization_id,
+                    billing_type: updates.billing_type,
+                    base_price: updates.base_price,
+                    active: updates.active,
+                    // New Fields
+                    destination_lat: updates.destination_lat,
+                    destination_lng: updates.destination_lng,
+                    destination_address: updates.destination_address,
+                    origin_lat: updates.origin_lat,
+                    origin_lng: updates.origin_lng,
+                    origin_address: updates.origin_address
+                })
                 .eq('id', id)
                 .select()
                 .single()

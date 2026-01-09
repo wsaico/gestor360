@@ -5,7 +5,7 @@ import areaService from '@services/areaService'
 import { useNotification } from '@contexts/NotificationContext'
 
 const AreaSettings = () => {
-    const { station } = useAuth()
+    const { station, getEffectiveStationId } = useAuth()
     const { notify } = useNotification()
 
     const [areas, setAreas] = useState([])
@@ -13,16 +13,23 @@ const AreaSettings = () => {
     const [newAreaName, setNewAreaName] = useState('')
     const [creating, setCreating] = useState(false)
 
+    // Determinar el ID de la estación a usar
+    const effectiveStationId = getEffectiveStationId()
+
     useEffect(() => {
-        if (station?.id) {
-            fetchAreas()
-        }
-    }, [station?.id])
+        // Cargamos áreas siempre que tengamos un ID o si queremos ver todas (para Global Admin)
+        fetchAreas()
+    }, [effectiveStationId])
 
     const fetchAreas = async () => {
+        if (!effectiveStationId) {
+            setAreas([])
+            return
+        }
+
         try {
             setLoading(true)
-            const data = await areaService.getAll(station.id)
+            const data = await areaService.getAll(effectiveStationId)
             setAreas(data || [])
         } catch (error) {
             console.error('Error fetching areas:', error)
@@ -39,7 +46,7 @@ const AreaSettings = () => {
         try {
             setCreating(true)
             await areaService.create({
-                station_id: station.id,
+                station_id: effectiveStationId,
                 name: newAreaName.trim().toUpperCase()
             })
             setNewAreaName('')
@@ -94,13 +101,13 @@ const AreaSettings = () => {
                                 value={newAreaName}
                                 onChange={(e) => setNewAreaName(e.target.value)}
                                 className="input w-full"
-                                placeholder="Ej: ALMACÉN GENERAL"
-                                disabled={creating}
+                                placeholder={effectiveStationId ? "Ej: ALMACÉN GENERAL" : "Seleccione una estación primero"}
+                                disabled={creating || !effectiveStationId}
                             />
                         </div>
                         <button
                             type="submit"
-                            disabled={creating || !newAreaName.trim()}
+                            disabled={creating || !newAreaName.trim() || !effectiveStationId}
                             className="btn btn-primary h-[42px] inline-flex items-center"
                         >
                             {creating ? 'Creando...' : <><Plus className="w-4 h-4 mr-2" /> Agregar</>}
@@ -125,7 +132,11 @@ const AreaSettings = () => {
                                 </tr>
                             ) : areas.length === 0 ? (
                                 <tr>
-                                    <td colSpan="3" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No hay áreas registradas</td>
+                                    <td colSpan="3" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                        {effectiveStationId
+                                            ? 'No hay áreas registradas para esta estación'
+                                            : 'Seleccione una estación en el cabezal para gestionar sus áreas'}
+                                    </td>
                                 </tr>
                             ) : (
                                 areas.map((area) => (

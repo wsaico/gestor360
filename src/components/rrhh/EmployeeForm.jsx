@@ -14,8 +14,11 @@ import {
     CreditCard,
     Building,
     Save,
-    X
+    X,
+    Search
 } from 'lucide-react'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import { useAuth } from '@contexts/AuthContext'
 import employeeService from '@services/employeeService'
 import jobRoleService from '@services/jobRoleService'
@@ -58,8 +61,53 @@ const EmployeeForm = ({ employee, onSuccess, onCancel }) => {
         email: '',
         photo_url: '',
         is_visitor: false,
-        visitor_discount_type: 'STANDARD'
+        visitor_discount_type: 'STANDARD',
+        address: '',
+        lat: null,
+        lng: null
     })
+
+    // Map State
+    const [searchQuery, setSearchQuery] = useState('')
+    const [isSearching, setIsSearching] = useState(false)
+
+    // Map Helpers
+    const LocationMarker = ({ position, setPosition }) => {
+        const map = useMapEvents({
+            click(e) {
+                setPosition(e.latlng)
+                map.flyTo(e.latlng, map.getZoom())
+                setFormData(prev => ({ ...prev, lat: e.latlng.lat, lng: e.latlng.lng }))
+            },
+        })
+        return position ? <Marker position={position}></Marker> : null
+    }
+
+    const handleSearchAddress = async () => {
+        if (!searchQuery) return
+        setIsSearching(true)
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`)
+            const data = await response.json()
+            if (data && data.length > 0) {
+                const first = data[0]
+                const lat = parseFloat(first.lat)
+                const lng = parseFloat(first.lon)
+                setFormData(prev => ({
+                    ...prev,
+                    lat,
+                    lng,
+                    address: first.display_name
+                }))
+            } else {
+                alert('No se encontraron resultados')
+            }
+        } catch (e) {
+            alert('Error buscando dirección')
+        } finally {
+            setIsSearching(false)
+        }
+    }
 
     useEffect(() => {
         const initialize = async () => {
@@ -336,6 +384,81 @@ const EmployeeForm = ({ employee, onSuccess, onCancel }) => {
                                 <option value={EMPLOYEE_STATUS.ACTIVE}>Activo</option>
                                 <option value={EMPLOYEE_STATUS.INACTIVE}>Cesado</option>
                             </select>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Sección: Ubicación */}
+                <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-blue-500" />
+                        Dirección de Domicilio (Para Rutas)
+                    </h4>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="label">Dirección Referencia</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: Av. Tarma 123"
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="input flex-1"
+                                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleSearchAddress())}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleSearchAddress}
+                                        className="btn btn-secondary px-3"
+                                        disabled={isSearching}
+                                    >
+                                        <Search className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">Busque una referencia y ajuste el PIN en el mapa.</p>
+                            </div>
+
+                            <div>
+                                <label className="label">Dirección Exacta (Guardada)</label>
+                                <textarea
+                                    className="input text-sm"
+                                    rows="2"
+                                    value={formData.address || ''}
+                                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                    placeholder="La dirección que aparecerá en la hoja de ruta..."
+                                ></textarea>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 text-xs font-mono bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                                <div>Lat: {formData.lat || '---'}</div>
+                                <div>Lng: {formData.lng || '---'}</div>
+                            </div>
+                        </div>
+
+                        <div className="h-[300px] bg-gray-100 rounded-xl overflow-hidden relative border shadow-inner">
+                            <MapContainer
+                                center={[formData.lat || -11.7752, formData.lng || -75.4983]}
+                                zoom={15}
+                                style={{ height: '100%', width: '100%' }}
+                            >
+                                <TileLayer
+                                    attribution='&copy; OpenStreetMap'
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                />
+                                <LocationMarker
+                                    position={formData.lat ? [formData.lat, formData.lng] : null}
+                                    setPosition={() => { }} // Handle in component
+                                />
+                            </MapContainer>
+                            {!formData.lat && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
+                                    <span className="bg-white/90 px-3 py-1 rounded-full text-xs font-bold shadow">
+                                        Click en el mapa para fijar casa
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
