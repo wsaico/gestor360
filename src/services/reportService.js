@@ -720,6 +720,87 @@ export const generateOrdersExport = async (orders, stationName) => {
   }
 }
 
+/**
+ * Genera el Reporte de Empleados (Estilo Profesional)
+ */
+export const generateEmployeesExport = async (employees, stationName) => {
+  try {
+    const wb = XLSX.utils.book_new()
+
+    const headerRow = [
+      createCell('DNI', STYLE_HEADER),
+      createCell('NOMBRE COMPLETO', STYLE_HEADER),
+      createCell('ESTACIÓN', STYLE_HEADER),
+      createCell('ÁREA', STYLE_HEADER),
+      createCell('CARGO', STYLE_HEADER),
+      createCell('TIPO CONTRATO', STYLE_HEADER),
+      createCell('JORNADA', STYLE_HEADER),
+      createCell('ESTADO', STYLE_HEADER),
+      createCell('FECHA INGRESO', STYLE_HEADER),
+      createCell('EMAIL', STYLE_HEADER),
+      createCell('TELÉFONO', STYLE_HEADER),
+      createCell('TIPO VISITANTE', STYLE_HEADER),
+      createCell('CORTESÍA', STYLE_HEADER)
+    ]
+
+    const rows = employees.map(emp => [
+      createCell(emp.dni, STYLE_CELL_CENTER),
+      createCell(emp.full_name, STYLE_CELL),
+      createCell(emp.station?.code || emp.station_id || '-', STYLE_CELL_CENTER),
+      createCell(emp.area || '-', STYLE_CELL),
+      createCell(emp.role_name || '-', STYLE_CELL),
+      createCell(emp.contract_type || '-', STYLE_CELL_CENTER),
+      createCell(emp.work_schedule || '-', STYLE_CELL_CENTER),
+      createCell(emp.status === 'ACTIVE' ? 'ACTIVO' : 'CESADO', STYLE_CELL_CENTER),
+      createCell(emp.hire_date ? formatDate(emp.hire_date) : '-', STYLE_CELL_CENTER),
+      createCell(emp.email || '-', STYLE_CELL),
+      createCell(emp.phone || '-', STYLE_CELL_CENTER),
+      createCell(emp.is_visitor ? 'VISITANTE' : 'PLANILLA', STYLE_CELL_CENTER),
+      createCell(emp.visitor_discount_type === 'COURTESY' ? 'SÍ' : 'NO', STYLE_CELL_CENTER)
+    ])
+
+    const wsData = [
+      [createCell('REPORTE MAESTRO DE EMPLEADOS', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName || 'Todas'} | Fecha Generación: ${formatDate(new Date())}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      headerRow,
+      ...rows
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    ws['!cols'] = [
+      { wch: 12 }, // DNI
+      { wch: 35 }, // Nombre
+      { wch: 12 }, // Estación
+      { wch: 20 }, // Área
+      { wch: 25 }, // Cargo
+      { wch: 15 }, // Contrato
+      { wch: 15 }, // Jornada
+      { wch: 10 }, // Estado
+      { wch: 15 }, // Ingreso
+      { wch: 30 }, // Email
+      { wch: 15 }, // Teléfono
+      { wch: 15 }, // Tipo Visitante
+      { wch: 10 }  // Cortesía
+    ]
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Empleados')
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
+  } catch (error) {
+    console.error('Error in generateEmployeesExport:', error)
+    throw error
+  }
+}
+
 export const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -738,5 +819,6 @@ export default {
   downloadBlob,
   generateMissingOrdersReport,
   generateRenewalsReport,
-  generateOrdersExport // Added
+  generateOrdersExport,
+  generateEmployeesExport // Added
 }

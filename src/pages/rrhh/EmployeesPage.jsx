@@ -11,6 +11,7 @@ import Modal from '@components/Modal'
 import EmployeeForm from '@components/rrhh/EmployeeForm'
 import EmployeeImportModal from '@components/rrhh/EmployeeImportModal'
 import * as XLSX from 'xlsx'
+import reportService from '@services/reportService'
 import {
   Plus,
   Search,
@@ -220,9 +221,42 @@ const EmployeesPage = () => {
   }
 
   const handleCancelPermanentDelete = () => {
-
     setShowPermanentDeleteDialog(false)
     setEmployeeToDeletePermanently(null)
+  }
+
+  /**
+   * Exporta la lista filtrada de empleados a Excel
+   */
+  const handleExportExcel = async () => {
+    try {
+      setLoading(true)
+      const targetStationId = getEffectiveStationId(selectedStationId)
+
+      // Fetch ALL matching filters (no pagination for export)
+      const filters = {
+        status: statusFilter,
+        search: searchTerm
+      }
+
+      const { data } = await employeeService.getAll(targetStationId, filters, 1, 1000)
+
+      if (!data || data.length === 0) {
+        notify.warning('No hay datos para exportar')
+        return
+      }
+
+      const stationName = stations.find(s => s.id === selectedStationId)?.name || 'Todas'
+      const blob = await reportService.generateEmployeesExport(data, stationName)
+      reportService.downloadBlob(blob, `Reporte_Empleados_${new Date().toISOString().split('T')[0]}.xlsx`)
+      notify.success('Reporte exportado exitosamente')
+
+    } catch (error) {
+      console.error('Error exporting employees:', error)
+      notify.error('Error al exportar: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) {
@@ -342,7 +376,7 @@ const EmployeesPage = () => {
             </div>
 
             <button
-              onClick={() => {/* Exportar a Excel */ }}
+              onClick={handleExportExcel}
               className="btn btn-secondary btn-md inline-flex items-center space-x-2"
             >
               <Download className="w-4 h-4" />
