@@ -28,7 +28,7 @@ import { ROLES, MEAL_TYPE_LABELS } from '@utils/constants'
 import { formatDate } from '@utils/helpers'
 import { useNotification } from '@contexts/NotificationContext'
 import Pagination from '@components/common/Pagination'
-import * as XLSX from 'xlsx' // Add XLSX import
+import reportService from '@services/reportService'
 
 const FoodOrdersPage = () => {
     const { user, station, hasRole, getEffectiveStationId } = useAuth()
@@ -305,7 +305,7 @@ const FoodOrdersPage = () => {
                         .from('food_orders')
                         .select(`
                             *,
-                            employee:employees(full_name, dni, role_name),
+                            employee:employees(full_name, dni, role_name, is_visitor, visitor_discount_type),
                             menu:menus(serve_date, options),
                             station:stations(name)
                         `, { count: 'exact' })
@@ -331,7 +331,7 @@ const FoodOrdersPage = () => {
                     .from('food_orders')
                     .select(`
                         *,
-                        employee:employees(full_name, dni, role_name),
+                        employee:employees(full_name, dni, role_name, is_visitor, visitor_discount_type),
                         menu:menus(serve_date, options),
                         station:stations(name)
                     `, { count: 'exact' })
@@ -429,26 +429,10 @@ const FoodOrdersPage = () => {
     }
 
     // --- Export & Audit ---
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
         try {
-            const dataToExport = orders.map(order => ({
-                'Fecha': formatDate(order.menu_date),
-                'Tipo': MEAL_TYPE_LABELS[order.meal_type] || order.meal_type,
-                'Estación': stations.find(s => s.id === order.station_id)?.name || order.station_id,
-                'Empleado': order.employee?.full_name || 'Visitante',
-                'DNI': order.employee?.dni || '-',
-                'Rol': order.employee?.role_name || '-',
-                'Opción': order.selected_option,
-                'Estado': order.status,
-                'Costo Empleado': order.cost_applied,
-                'Subsidio Empresa': order.company_subsidy_snapshot,
-                'Notas': order.notes || '-'
-            }))
-
-            const ws = XLSX.utils.json_to_sheet(dataToExport)
-            const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, ws, "Pedidos")
-            XLSX.writeFile(wb, `Reporte_Alimentacion_${new Date().toISOString().split('T')[0]}.xlsx`)
+            const blob = await reportService.generateOrdersExport(orders, station?.name || 'Todas')
+            reportService.downloadBlob(blob, `Reporte_Alimentacion_${new Date().toISOString().split('T')[0]}.xlsx`)
             notify.success('Reporte descargado exitosamente')
         } catch (error) {
             console.error(error)

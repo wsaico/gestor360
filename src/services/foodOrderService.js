@@ -472,6 +472,116 @@ class FoodOrderService {
       throw error
     }
   }
+
+  /**
+   * Cuenta cuántos pedidos en un rango de fechas no tienen costo asignado (0)
+   */
+  async countUnpricedOrders(stationId, startDate, endDate) {
+    try {
+      const { count, error } = await supabase
+        .from('food_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('station_id', stationId)
+        .gte('menu_date', startDate)
+        .lte('menu_date', endDate)
+        .or('cost_applied.eq.0,employee_cost_snapshot.eq.0,company_subsidy_snapshot.eq.0')
+
+      if (error) throw error
+      return count || 0
+    } catch (error) {
+      console.error('Error counting unpriced orders:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Recalcula los costos para pedidos que tienen costo 0 o faltante
+   * @param {string} stationId - ID de la estación
+   * @param {string} startDate - Fecha inicio
+   * @param {string} endDate - Fecha fin
+   */
+  async recalculateMissingCosts(stationId, startDate, endDate) {
+    try {
+      // 1. Obtener todos los pedidos del periodo
+      const { data: orders, error: ordersError } = await supabase
+        .from('food_orders')
+        .select(`
+          id,
+          employee_id,
+          employee:employees(role_name, is_visitor),
+          order_type,
+          cost_applied,
+          employee_cost_snapshot,
+          company_subsidy_snapshot
+        `)
+        .eq('station_id', stationId)
+        .gte('menu_date', startDate)
+        .lte('menu_date', endDate)
+
+      if (ordersError) throw ordersError
+      if (!orders || orders.length === 0) return { updated: 0, total: 0 }
+
+      // 2. Obtener todas las tarifas de la estación
+      const { data: pricings, error: pricingError } = await supabase
+        .from('role_pricing_config')
+        .select('*')
+        .eq('station_id', stationId)
+
+      if (pricingError) throw pricingError
+      const pricingMap = {}
+        ; (pricings || []).forEach(p => {
+          pricingMap[p.role_name] = p
+        })
+
+      // 3. Procesar actualizaciones
+      let updatedCount = 0
+      const updates = orders.map(async (order) => {
+        const isVisitor = order.employee?.is_visitor || order.order_type === 'VISITOR'
+        const role = order.employee?.role_name
+        const pricing = pricingMap[role]
+
+        let empCost = 0
+        let compSubsidy = 0
+
+        // Si es visitante, siempre es CORTESIA (0 costo, 0 subsidio)
+        if (isVisitor) {
+          empCost = 0
+          compSubsidy = 0
+        } else if (pricing) {
+          empCost = Number(pricing.employee_cost)
+          compSubsidy = Number(pricing.company_subsidy)
+        } else {
+          // Si no hay tarifa configurada ni es visitante, mantenemos 0 por seguridad
+          empCost = 0
+          compSubsidy = 0
+        }
+
+        // Solo actualizar si hay cambios reales para evitar ruido
+        if (
+          Number(order.cost_applied) !== empCost ||
+          Number(order.employee_cost_snapshot) !== empCost ||
+          Number(order.company_subsidy_snapshot) !== compSubsidy
+        ) {
+          const { error: updateError } = await supabase
+            .from('food_orders')
+            .update({
+              cost_applied: empCost,
+              employee_cost_snapshot: empCost,
+              company_subsidy_snapshot: compSubsidy
+            })
+            .eq('id', order.id)
+
+          if (!updateError) updatedCount++
+        }
+      })
+
+      await Promise.all(updates)
+      return { updated: updatedCount, total: orders.length }
+    } catch (error) {
+      console.error('Error recalculating costs:', error)
+      throw error
+    }
+  }
 }
 
 export default new FoodOrderService()

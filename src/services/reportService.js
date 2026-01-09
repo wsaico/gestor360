@@ -208,10 +208,7 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
   try {
     let orders = await getOrdersForReport(stationId, startDate, endDate)
 
-    // FILTER: Exclude Courtesy/Visitor orders with 0 Value from ALL calculation (Summary, Breakdown, etc.)
-    orders = orders.filter(o => (Number(o.employee_cost_snapshot || 0) + Number(o.company_subsidy_snapshot || 0)) > 0)
-
-    if (orders.length === 0) throw new Error('No hay pedidos facturables para generar el reporte')
+    if (orders.length === 0) throw new Error('No hay pedidos para generar el reporte')
 
     const uniqueDates = [...new Set(orders.map(o => o.menu_date))].sort()
     const employeeMap = new Map()
@@ -236,15 +233,25 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
       emp.companyDates[dateKey] += Number(order.company_subsidy_snapshot || 0)
     })
 
-    const employees = Array.from(employeeMap.values())
+    const allEmployees = Array.from(employeeMap.values())
+
+    // Filtro para 25%/75% (solo los que tienen costo > 0)
+    const employeesWithCost = allEmployees
       .filter(e => {
         const totalEmp = Object.values(e.employeeDates).reduce((a, b) => a + b, 0)
         const totalComp = Object.values(e.companyDates).reduce((a, b) => a + b, 0)
         return (totalEmp + totalComp) > 0
       })
-      .sort((a, b) =>
-        a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName)
-      )
+      .sort((a, b) => a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName))
+
+    // Filtro para Especiales (los que tienen registros pero costo = 0)
+    const specialEmployees = allEmployees
+      .filter(e => {
+        const totalEmp = Object.values(e.employeeDates).reduce((a, b) => a + b, 0)
+        const totalComp = Object.values(e.companyDates).reduce((a, b) => a + b, 0)
+        return (totalEmp + totalComp) === 0
+      })
+      .sort((a, b) => a.area.localeCompare(b.area) || a.fullName.localeCompare(b.fullName))
 
     const baseHeaders = [
       createCell('ITEM', STYLE_HEADER),
@@ -259,7 +266,7 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
     const wb = XLSX.utils.book_new()
 
     // --- Pestaña 1: 25% Empleado ---
-    const employeeRows = employees.map((emp, index) => {
+    const employeeRows = employeesWithCost.map((emp, index) => {
       const row = [
         createCell(index + 1, STYLE_CELL_CENTER),
         createCell(emp.dni, STYLE_CELL_CENTER),
@@ -296,7 +303,7 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
     XLSX.utils.book_append_sheet(wb, ws1, '25% Empleado')
 
     // --- Pestaña 2: 75% Empresa ---
-    const companyRows = employees.map((emp, index) => {
+    const companyRows = employeesWithCost.map((emp, index) => {
       const row = [
         createCell(index + 1, STYLE_CELL_CENTER),
         createCell(emp.dni, STYLE_CELL_CENTER),
@@ -328,20 +335,61 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
     ws2['!merges'] = ws1['!merges']
     XLSX.utils.book_append_sheet(wb, ws2, '75% Empresa')
 
+    // --- Pestaña 3: Pedidos Especiales (Cortesía/Visitantes) ---
+    const specialRows = specialEmployees.map((emp, index) => {
+      const row = [
+        createCell(index + 1, STYLE_CELL_CENTER),
+        createCell(emp.dni, STYLE_CELL_CENTER),
+        createCell(emp.fullName, STYLE_CELL),
+        createCell(emp.area, STYLE_CELL_CENTER),
+        createCell(emp.role, STYLE_CELL)
+      ]
+      let totalCount = 0
+      uniqueDates.forEach(date => {
+        // En esta pestaña buscamos si hubo consumos (aunque el costo sea 0)
+        // Usamos orders para verificar si hubo algo ese día para este emp
+        const hasOrder = orders.some(o => o.employee.dni === emp.dni && o.menu_date === date)
+        row.push(createCell(hasOrder ? '1' : '', STYLE_CELL_CENTER))
+        if (hasOrder) totalCount++
+      })
+      row.push(createCell(totalCount, STYLE_SECONDARY_BG))
+      return row
+    })
+
+    const wsSpecData = [
+      [createCell('PEDIDOS ESPECIALES - CORTESÍA / VISITANTES (SIN COSTO)', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName} | Periodo: ${formatDate(startDate)} - ${formatDate(endDate)}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      [...baseHeaders, ...dateHeaders, createCell('TOTAL CANT.', STYLE_HEADER)],
+      ...specialRows
+    ]
+    const wsSpec = XLSX.utils.aoa_to_sheet(wsSpecData)
+    wsSpec['!cols'] = ws1['!cols']
+    wsSpec['!merges'] = ws1['!merges']
+    XLSX.utils.book_append_sheet(wb, wsSpec, 'Pedidos Especiales')
+
     // --- Pestaña 3: Resumen Total ---
     const startD = typeof startDate === 'string' ? parseISO(startDate) : startDate
     const weekNum = format(startD, 'I')
-    const totalDesayunos = orders.length
-    const pedidosNormales = orders.filter(o => !o.employee?.is_visitor).length
-    const pedidosEspeciales = orders.filter(o => o.employee?.is_visitor).length
+    const totalServicios = orders.length
+    const pedidosNormales = orders.filter(o => Number(o.employee_cost_snapshot || 0) > 0).length
+    const pedidosEspeciales = orders.filter(o => Number(o.employee_cost_snapshot || 0) <= 0).length
 
     const empPriceBreakdown = {}
     const compPriceBreakdown = {}
     orders.forEach(o => {
-      const ep = Number(o.employee_cost_snapshot || 0).toFixed(2)
-      const cp = Number(o.company_subsidy_snapshot || 0).toFixed(2)
-      empPriceBreakdown[ep] = (empPriceBreakdown[ep] || 0) + 1
-      compPriceBreakdown[cp] = (compPriceBreakdown[cp] || 0) + 1
+      const epVal = Number(o.employee_cost_snapshot || 0)
+      const cpVal = Number(o.company_subsidy_snapshot || 0)
+
+      if (epVal > 0) {
+        const ep = epVal.toFixed(2)
+        empPriceBreakdown[ep] = (empPriceBreakdown[ep] || 0) + 1
+      }
+
+      if (cpVal > 0) {
+        const cp = cpVal.toFixed(2)
+        compPriceBreakdown[cp] = (compPriceBreakdown[cp] || 0) + 1
+      }
     })
 
     const buildSummaryRows = (breakdown) => Object.entries(breakdown)
@@ -383,10 +431,10 @@ export const generateBillingReport = async (stationId, startDate, endDate, stati
 
     const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
     XLSX.utils.sheet_add_aoa(ws3, [
-      [createCell('Total de Desayunos:', STYLE_SECONDARY_BG), createCell(totalDesayunos, STYLE_CELL_CENTER)],
-      [createCell('Pedidos Normales:', STYLE_SECONDARY_BG), createCell(pedidosNormales, STYLE_CELL_CENTER)],
-      [createCell('Pedidos Especiales:', STYLE_SECONDARY_BG), createCell(pedidosEspeciales, STYLE_CELL_CENTER)],
-      [createCell('Costo por Menú:', STYLE_SECONDARY_BG), createCell((Number(empTableRows[0]?.v || 0) + Number(compTableRows[0]?.v || 0) || 12).toFixed(2), STYLE_CELL_CENTER)]
+      [createCell('RESUMEN DE CONSUMOS', STYLE_SECONDARY_BG)],
+      [createCell('Total de Servicios:', STYLE_CELL), createCell(totalServicios, STYLE_CELL_CENTER)],
+      [createCell('Pedidos Normales:', STYLE_CELL), createCell(pedidosNormales, STYLE_CELL_CENTER)],
+      [createCell('Pedidos Especiales:', STYLE_CELL), createCell(pedidosEspeciales, STYLE_CELL_CENTER)]
     ], { origin: 'I5' })
 
     ws3['!cols'] = [{ wch: 6 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 5 }, { wch: 25 }, { wch: 10 }]
@@ -569,6 +617,109 @@ export const generateRenewalsReport = async (employeeGroups, stationName, itemsI
   }
 }
 
+/**
+ * Genera el Reporte de Gestión de Pedidos (Estilo Profesional)
+ */
+export const generateOrdersExport = async (orders, stationName) => {
+  try {
+    const wb = XLSX.utils.book_new()
+
+    // Helper para generar filas
+    const generateRows = (orderList) => orderList.map(order => {
+      // Un pedido es especial si: es tipo VISITOR, el empleado es visitante, o tiene descuento de CORTESÍA
+      const isSpecial =
+        order.order_type === 'VISITOR' ||
+        order.employee?.is_visitor ||
+        order.employee?.visitor_discount_type === 'COURTESY'
+
+      return [
+        createCell(formatDate(order.menu_date), STYLE_CELL_CENTER),
+        createCell(order.meal_type === 'DESAYUNO' ? 'DESAYUNO' : 'ALMUERZO', STYLE_CELL_CENTER),
+        createCell(order.employee?.full_name || order.visitor_name || 'VISITANTE', STYLE_CELL),
+        createCell(order.employee?.dni || '-', STYLE_CELL_CENTER),
+        createCell(order.employee?.role_name || '-', STYLE_CELL),
+        createCell(order.selected_option, STYLE_CELL),
+        createCell(order.status === 'CONSUMED' ? 'ATENDIDO' : order.status === 'CANCELLED' ? 'CANCELADO' : 'PENDIENTE', STYLE_CELL_CENTER),
+        createCell(isSpecial ? 'ESPECIAL' : 'NORMAL', STYLE_CELL_CENTER),
+        createCell(Number(order.cost_applied || 0).toFixed(2), STYLE_CELL_CENTER),
+        createCell(Number(order.company_subsidy_snapshot || 0).toFixed(2), STYLE_CELL_CENTER),
+        createCell(order.notes || '-', STYLE_CELL)
+      ]
+    })
+
+    const headerRow = [
+      createCell('FECHA', STYLE_HEADER),
+      createCell('SERVICIO', STYLE_HEADER),
+      createCell('EMPLEADO', STYLE_HEADER),
+      createCell('DNI', STYLE_HEADER),
+      createCell('CARGO', STYLE_HEADER),
+      createCell('OPCIÓN', STYLE_HEADER),
+      createCell('ESTADO', STYLE_HEADER),
+      createCell('TIPO PEDIDO', STYLE_HEADER),
+      createCell('COSTO EMP.', STYLE_HEADER),
+      createCell('SUBSIDIO EMP.', STYLE_HEADER),
+      createCell('NOTAS', STYLE_HEADER)
+    ]
+
+    const colWidths = [
+      { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 12 }, { wch: 25 },
+      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 30 }
+    ]
+
+    const normalOrders = orders.filter(o => {
+      const isSpecial =
+        o.order_type === 'VISITOR' ||
+        o.employee?.is_visitor ||
+        o.employee?.visitor_discount_type === 'COURTESY'
+      return !isSpecial
+    })
+
+    const specialOrders = orders.filter(o => {
+      const isSpecial =
+        o.order_type === 'VISITOR' ||
+        o.employee?.is_visitor ||
+        o.employee?.visitor_discount_type === 'COURTESY'
+      return isSpecial
+    })
+
+    // --- Pestaña 1: Pedidos Normales ---
+    const wsNormalData = [
+      [createCell('CONTROL DE ALIMENTACIÓN - PEDIDOS NORMALES', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName || 'Todas'} | Fecha Reporte: ${formatDate(new Date())}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      headerRow,
+      ...generateRows(normalOrders)
+    ]
+    const wsNormal = XLSX.utils.aoa_to_sheet(wsNormalData)
+    wsNormal['!cols'] = colWidths
+    wsNormal['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
+    ]
+    XLSX.utils.book_append_sheet(wb, wsNormal, 'Pedidos Normales')
+
+    // --- Pestaña 2: Pedidos Especiales ---
+    const wsSpecialData = [
+      [createCell('CONTROL DE ALIMENTACIÓN - PEDIDOS ESPECIALES', STYLE_TITLE)],
+      [createCell(`Estación: ${stationName || 'Todas'} | Fecha Reporte: ${formatDate(new Date())}`, STYLE_SUBTITLE)],
+      [createCell('')],
+      headerRow,
+      ...generateRows(specialOrders)
+    ]
+    const wsSpecial = XLSX.utils.aoa_to_sheet(wsSpecialData)
+    wsSpecial['!cols'] = colWidths
+    wsSpecial['!merges'] = wsNormal['!merges']
+    XLSX.utils.book_append_sheet(wb, wsSpecial, 'Pedidos Especiales')
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
+  } catch (error) {
+    console.error('Error in generateOrdersExport:', error)
+    throw error
+  }
+}
+
 export const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -586,5 +737,6 @@ export default {
   generateBillingReport,
   downloadBlob,
   generateMissingOrdersReport,
-  generateRenewalsReport // Added
+  generateRenewalsReport,
+  generateOrdersExport // Added
 }
