@@ -9,7 +9,7 @@ import { useEffect } from 'react'
  * @param {ReactNode} children - Contenido del modal
  * @param {string} maxWidth - Clase de ancho máximo (default: max-w-lg)
  */
-const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }) => {
+const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-lg', fullScreenMobile = false }) => {
     // Cerrar con Escape
     useEffect(() => {
         const handleEsc = (e) => {
@@ -28,8 +28,13 @@ const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }) => {
     if (!isOpen) return null
 
     return (
-        <div className="gestor-modal-backdrop z-50">
-            <div className={`gestor-modal-content ${maxWidth} w-full m-4 max-h-[90vh] flex flex-col`}>
+        <div className={`gestor-modal-backdrop z-50 ${fullScreenMobile ? 'items-end sm:items-center p-0 sm:p-4' : ''}`}>
+            <div className={`gestor-modal-content ${maxWidth} w-full flex flex-col
+                ${fullScreenMobile
+                    ? 'h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl m-0 sm:m-4'
+                    : 'm-4 max-h-[90vh] rounded-2xl'
+                }
+            `}>
                 {/* Header */}
                 <div className="gestor-modal-header flex items-center justify-between shrink-0">
                     <h3 className="gestor-modal-title">{title}</h3>
@@ -42,7 +47,7 @@ const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }) => {
                 </div>
 
                 {/* Body - Scrollable */}
-                <div className="gestor-modal-body overflow-y-auto p-6">
+                <div className={`gestor-modal-body overflow-y-auto ${fullScreenMobile ? 'p-0 sm:p-6' : 'p-6'}`}>
                     {children}
                 </div>
             </div>

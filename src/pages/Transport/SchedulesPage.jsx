@@ -46,6 +46,9 @@ const SchedulesPage = () => {
     const [employees, setEmployees] = useState([])
     const [organizations, setOrganizations] = useState([])
 
+    // Mobile specific: Expand/Collapse detail cards
+    const [expandedCards, setExpandedCards] = useState(new Set()) // Set of IDs
+
     // Sub-resources cache
     const [subResources, setSubResources] = useState({ drivers: [], vehicles: [] })
 
@@ -344,9 +347,13 @@ const SchedulesPage = () => {
     // For specific provider flow, allow viewing without station context if they are just seeing their trips? 
     // But currently the system requires station. Let's keep it safe.
     if (!station && !isProvider) return <div className="p-10 text-center text-gray-500">Seleccione una estación de trabajo.</div>
-    if (!station && isProvider) {
-        // If provider doesn't have station selected (maybe specific logic), handle gracefully or show empty.
-        // For now assuming provider context might have station or we just show "Select Station" same as admin.
+
+    // Mobile: Toggle Card Expansion
+    const toggleCard = (id) => {
+        const newSet = new Set(expandedCards)
+        if (newSet.has(id)) newSet.delete(id)
+        else newSet.add(id)
+        setExpandedCards(newSet)
     }
 
     // Helper to robustly get route info
@@ -383,7 +390,7 @@ const SchedulesPage = () => {
                         </div>
                         {isProvider ? 'Mis Asignaciones de Viaje' : 'Programación de Salidas'}
                     </h1>
-                    <p className="text-gray-500 mt-2 ml-14">
+                    <p className="text-gray-500 mt-2 ml-14 hidden md:block">
                         {isProvider ? 'Gestione conductores y vehículos para sus viajes asignados' : `Gestión de despachos para ${station?.name || '...'}`}
                     </p>
                 </div>
@@ -447,13 +454,13 @@ const SchedulesPage = () => {
                     <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
                         <button
                             onClick={() => setViewMode('pending')}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'pending' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+                            className={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'pending' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
                         >
                             Pendientes
                         </button>
                         <button
                             onClick={() => setViewMode('history')}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+                            className={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
                         >
                             Historial
                         </button>
@@ -462,9 +469,9 @@ const SchedulesPage = () => {
                 {!isProvider && (
                     <button
                         onClick={handleOpenCreate}
-                        className="btn btn-primary shadow-lg shadow-primary-500/30 px-8 rounded-xl h-12 flex items-center gap-2"
+                        className="btn btn-primary shadow-lg shadow-primary-500/30 w-full sm:w-auto px-6 rounded-xl h-12 flex items-center justify-center gap-2"
                     >
-                        <Plus className="w-5 h-5" /> Nueva Salida
+                        <Plus className="w-5 h-5" /> <span className="sm:hidden lg:inline">Nueva Salida</span>
                     </button>
                 )}
             </div>
@@ -473,7 +480,137 @@ const SchedulesPage = () => {
                 <div className="py-20 flex justify-center"><div className="loading loading-spinner loading-lg text-primary-500"></div></div>
             ) : (
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-                    <div className="overflow-x-auto">
+
+                    {/* MOBILE CARD VIEW */}
+                    <div className="block lg:hidden divide-y divide-gray-100 dark:divide-gray-700">
+                        <AnimatePresence>
+                            {visibleSchedules.map((schedule, idx) => (
+                                <motion.div
+                                    key={schedule.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: idx * 0.03 }}
+                                    onClick={() => toggleCard(schedule.id)}
+                                    className={`p-4 active:bg-gray-50 dark:active:bg-gray-700/50 transition-colors cursor-pointer ${schedule.status === 'COMPLETED' ? 'opacity-70 bg-gray-50/50' : ''}`}
+                                >
+                                    {/* Top Row: Time, Status, Route */}
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-2xl font-bold font-mono text-gray-900 dark:text-white">
+                                                {schedule.departure_time.substring(0, 5)}
+                                            </span>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase text-gray-400 leading-none mb-0.5">
+                                                    {getRouteDisplay(schedule).client}
+                                                </span>
+                                                <span className="text-sm font-bold font-sans text-primary-700 dark:text-primary-400 leading-tight">
+                                                    {getRouteDisplay(schedule).name}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase border ${schedule.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                schedule.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    schedule.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                            }`}>
+                                            {schedule.status === 'IN_PROGRESS' ? 'En Ruta' :
+                                                schedule.status === 'COMPLETED' ? 'Fin' :
+                                                    schedule.status === 'CANCELLED' ? 'Cancel' : 'Pendiente'}
+                                        </span>
+                                    </div>
+
+                                    {/* Middle Row: Driver & Vehicle */}
+                                    <div className="flex flex-col gap-1 mb-3 pl-1 border-l-2 border-gray-100 dark:border-gray-700">
+                                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                            <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">
+                                                {schedule.driver ? '👮' : '❓'}
+                                            </div>
+                                            <span className={schedule.driver ? 'font-medium' : 'text-gray-400 italic'}>
+                                                {schedule.driver?.first_name || 'Sin Chofer'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                            <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">
+                                                {schedule.vehicle ? '🚌' : '❓'}
+                                            </div>
+                                            <span className={`font-mono text-xs ${schedule.vehicle ? '' : 'text-gray-400 italic'}`}>
+                                                {schedule.vehicle?.plate_number || 'Sin Vehículo'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Row: Passengers count & Actions */}
+                                    <div className="flex items-center justify-between mt-3">
+                                        <div className="flex -space-x-2 items-center">
+                                            {Array.from({ length: Math.min(3, schedule.passengers_manifest?.length || 0) }).map((_, i) => (
+                                                <div key={i} className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                                    <Users className="w-3 h-3" />
+                                                </div>
+                                            ))}
+                                            {(schedule.passengers_manifest?.length || 0) > 3 && (
+                                                <div className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                                    +{schedule.passengers_manifest.length - 3}
+                                                </div>
+                                            )}
+                                            {(schedule.passengers_manifest?.length || 0) === 0 && (
+                                                <span className="text-gray-300 text-xs italic ml-2">Sin pax</span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleShareWhatsapp(schedule); }}
+                                                className="btn btn-sm btn-circle btn-ghost text-green-600 bg-green-50"
+                                            >
+                                                <Share2 className="w-4 h-4" />
+                                            </button>
+                                            {(schedule.status === 'PENDING' || isProvider) && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(schedule); }}
+                                                    className="btn btn-sm btn-circle btn-ghost text-primary-600 bg-primary-50"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Expanded Details (Passengers List) */}
+                                    {expandedCards.has(schedule.id) && schedule.passengers_manifest?.length > 0 && (
+                                        <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700"
+                                        >
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Orden de Recogida</h4>
+                                            {schedule.passengers_manifest.map((pid, pidx) => {
+                                                const emp = employees.find(e => e.id === pid)
+                                                return (
+                                                    <div key={pid} className="flex items-center gap-2 mb-1.5 text-sm">
+                                                        <span className="w-5 h-5 rounded bg-gray-100 text-gray-500 text-[10px] flex items-center justify-center font-bold">
+                                                            {pidx + 1}
+                                                        </span>
+                                                        <span className="text-gray-700 dark:text-gray-300 truncate">
+                                                            {emp?.full_name || 'Desconocido'}
+                                                        </span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </motion.div>
+                                    )}
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                        {schedules.length === 0 && (
+                            <div className="py-12 text-center text-gray-400 flex flex-col items-center">
+                                <Clock className="w-12 h-12 mb-3 opacity-30" />
+                                <p>No hay salidas programadas</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* DESKTOP TABLE VIEW */}
+                    <div className="overflow-x-auto hidden lg:block">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-gray-50/50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
@@ -699,11 +836,11 @@ const SchedulesPage = () => {
                 </div>
             )}
 
-            {/* Modal - Create/Edit */}
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingSchedule ? "Editar Despacho" : "Programar Despacho"} maxWidth="max-w-5xl">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-8 h-[650px] overflow-hidden">
+            {/* Modal - Create/Edit - Full screen on mobile */}
+            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingSchedule ? "Editar Despacho" : "Programar Despacho"} maxWidth="max-w-5xl" fullScreenMobile={true}>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-8 h-full sm:h-[650px] overflow-hidden flex-1">
                     {/* Left Column: Form */}
-                    <div className="lg:col-span-7 overflow-y-auto pr-2 space-y-6 custom-scrollbar pb-6">
+                    <div className="lg:col-span-7 overflow-y-auto pr-2 space-y-4 sm:space-y-6 custom-scrollbar pb-20 sm:pb-6 p-4">
 
                         {/* Section: Route & Time */}
                         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-4">

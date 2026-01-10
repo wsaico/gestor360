@@ -20,10 +20,14 @@ class DashboardService {
       // KPIs de alimentación
       const alimentacionKPIs = await this.getAlimentacionKPIs(stationId)
 
+      // KPIs de transporte
+      const transportKPIs = await this.getTransportKPIs(stationId)
+
       return {
         employees: employeesKPIs,
         sst: sstKPIs,
-        alimentacion: alimentacionKPIs
+        alimentacion: alimentacionKPIs,
+        transport: transportKPIs
       }
     } catch (error) {
       console.error('Error fetching dashboard KPIs:', error)
@@ -68,8 +72,9 @@ class DashboardService {
   async getSSTKPIs(stationId = null) {
     try {
       let inventoryQuery = supabase
-        .from('inventory_items')
+        .from('epp_items')
         .select('*', { count: 'exact' })
+        .eq('is_active', true)
 
       if (stationId) {
         inventoryQuery = inventoryQuery.eq('station_id', stationId)
@@ -141,6 +146,56 @@ class DashboardService {
     } catch (error) {
       console.error('Error fetching alimentacion KPIs:', error)
       return { todayOrders: 0, pendingOrders: 0, monthlyOrders: 0, avgCost: 0 }
+    }
+  }
+
+  /**
+   * Obtiene KPIs de transporte
+   */
+  async getTransportKPIs(stationId = null) {
+    try {
+      const today = new Date().toISOString().split('T')[0]
+
+      // 1. Conductores Activos
+      let driversQuery = supabase
+        .from('transport_drivers')
+        .select('*', { count: 'exact' })
+        .eq('status', 'ACTIVE')
+
+      if (stationId) driversQuery = driversQuery.eq('station_id', stationId)
+      const { count: drivers } = await driversQuery
+
+      // 2. Vehículos Operativos
+      let vehiclesQuery = supabase
+        .from('transport_vehicles')
+        .select('*', { count: 'exact' })
+        .eq('status', 'OPERATIONAL')
+
+      if (stationId) vehiclesQuery = vehiclesQuery.eq('station_id', stationId)
+      const { count: vehicles } = await vehiclesQuery
+
+      // 3. Viajes de Hoy
+      let tripsQuery = supabase
+        .from('transport_trips')
+        .select('*', { count: 'exact' })
+        .eq('date', today)
+        .in('status', ['SCHEDULED', 'IN_PROGRESS'])
+
+      // Note: Trips might link to route -> station_id or have direct station_id. 
+      // Assuming direct station_id for simplicity or strictly global for now if not.
+      // If transport_trips has station_id:
+      if (stationId) tripsQuery = tripsQuery.eq('station_id', stationId)
+
+      const { count: activeTrips } = await tripsQuery
+
+      return {
+        activeDrivers: drivers || 0,
+        operationalVehicles: vehicles || 0,
+        activeTrips: activeTrips || 0
+      }
+    } catch (error) {
+      console.error('Error fetching transport KPIs:', error)
+      return { activeDrivers: 0, operationalVehicles: 0, activeTrips: 0 }
     }
   }
 

@@ -15,7 +15,13 @@ import {
   UserPlus,
   ArrowRightLeft,
   Ban,
-  Upload
+  Upload,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  Calendar,
+  User,
+  MoreVertical
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -74,6 +80,7 @@ const AssetsPage = () => {
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingAsset, setEditingAsset] = useState(null)
   const [selectedAsset, setSelectedAsset] = useState(null)
+  const [showMobileFilters, setShowMobileFilters] = useState(false) // Mobile filters toggle
 
   // Cargar datos
   useEffect(() => {
@@ -287,7 +294,7 @@ const AssetsPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Inventario de Activos
@@ -296,34 +303,38 @@ const AssetsPage = () => {
             Gestión completa de activos - {station?.name}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => fetchData()}
-            className="btn btn-secondary"
+            className="btn btn-secondary p-2"
             title="Refrescar"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>Exportar</span>
-          </button>
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors shadow-sm"
-          >
-            <Upload className="w-4 h-4" />
-            <span>Importar</span>
-          </button>
+
+          <div className="hidden sm:flex gap-2">
+            <button
+              onClick={handleExport}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Exportar</span>
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="btn btn-secondary flex items-center gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:bg-emerald-900/10 dark:text-emerald-400 dark:border-emerald-800"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Importar</span>
+            </button>
+          </div>
+
           <button
             onClick={handleCreate}
-            className="flex items-center gap-2 px-4 py-2 text-white bg-primary-600 rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors shadow-sm"
+            className="btn btn-primary flex items-center gap-2 flex-1 sm:flex-none justify-center"
           >
             <Plus className="w-4 h-4" />
-            <span>Nuevo Activo</span>
+            <span className="whitespace-nowrap">Nuevo Activo</span>
           </button>
         </div>
       </div>
@@ -385,29 +396,49 @@ const AssetsPage = () => {
 
       {/* Filtros */}
       <div className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-          <h3 className="font-semibold text-gray-900 dark:text-white">Filtros</h3>
-          {(searchTerm || filterCategory !== 'ALL' || filterStatus !== 'ALL' ||
-            filterCondition !== 'ALL' || filterArea !== 'ALL' || filterOrganization !== 'ALL' ||
-            filterAssigned !== 'ALL') && (
-              <button
-                onClick={handleClearFilters}
-                className="text-sm text-primary-600 hover:text-primary-700 ml-auto"
-              >
-                Limpiar filtros
-              </button>
-            )}
+        <div
+          className="flex items-center justify-between cursor-pointer lg:cursor-default"
+          onClick={() => setShowMobileFilters(!showMobileFilters)}
+        >
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <h3 className="font-semibold text-gray-900 dark:text-white">Filtros</h3>
+            {(searchTerm || filterCategory !== 'ALL' || filterStatus !== 'ALL' ||
+              filterCondition !== 'ALL' || filterArea !== 'ALL' || filterOrganization !== 'ALL' ||
+              filterAssigned !== 'ALL') && (
+                <span className="text-xs bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300 px-2 py-0.5 rounded-full lg:hidden">
+                  Activos
+                </span>
+              )}
+          </div>
+          <div className="flex items-center gap-2">
+            {(searchTerm || filterCategory !== 'ALL' || filterStatus !== 'ALL' ||
+              filterCondition !== 'ALL' || filterArea !== 'ALL' || filterOrganization !== 'ALL' ||
+              filterAssigned !== 'ALL') && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleClearFilters()
+                  }}
+                  className="text-sm text-primary-600 hover:text-primary-700 hidden lg:block"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            <button className="lg:hidden p-1 text-gray-500">
+              {showMobileFilters ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 ${showMobileFilters ? 'block' : 'hidden lg:grid'}`}>
           {/* Búsqueda */}
           <div className="lg:col-span-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar por código, nombre, marca, modelo, serie, IMEI..."
+                placeholder="Buscar por código, nombre, marca..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="input pl-10 w-full"
@@ -508,6 +539,18 @@ const AssetsPage = () => {
               placeholder="Asignación"
             />
           </div>
+
+          {/* Mobile Clear Filters Button */}
+          {(searchTerm || filterCategory !== 'ALL' || filterStatus !== 'ALL' ||
+            filterCondition !== 'ALL' || filterArea !== 'ALL' || filterOrganization !== 'ALL' ||
+            filterAssigned !== 'ALL') && (
+              <button
+                onClick={handleClearFilters}
+                className="btn btn-secondary w-full lg:hidden mt-2 text-primary-600"
+              >
+                Limpiar filtros activos
+              </button>
+            )}
         </div>
       </div>
 
@@ -574,143 +617,229 @@ const AssetsPage = () => {
         </div>
       ) : (
         // Vista de Lista
-        <div className="card overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Código
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Activo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Categoría
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Estado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Condición
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Asignado a
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Área
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Valor
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-48">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredAssets.map(asset => (
-                <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-sm font-mono text-gray-900 dark:text-white">
+        <>
+          {/* Mobile Card View (Visible on mobile only) */}
+          <div className="grid grid-cols-1 gap-4 lg:hidden">
+            {filteredAssets.map(asset => (
+              <div key={asset.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col gap-3">
+                {/* Header: Code & Status */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="font-mono text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
                       {asset.asset_code}
                     </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {asset.asset_name}
-                      </div>
-                      {(asset.brand || asset.model) && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {[asset.brand, asset.model].filter(Boolean).join(' - ')}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <h3 className="font-bold text-gray-900 dark:text-white mt-1">
+                      {asset.asset_name}
+                    </h3>
+                    {(asset.brand || asset.model) && (
+                      <p className="text-xs text-gray-500">
+                        {[asset.brand, asset.model].filter(Boolean).join(' - ')}
+                      </p>
+                    )}
+                  </div>
+                  <AssetStatusBadge status={asset.status} />
+                </div>
+
+                {/* Meta Info Grid */}
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">Categoría</span>
+                    <span className="text-gray-700 dark:text-gray-300 font-medium">
                       {ASSET_CATEGORY_LABELS[asset.asset_category]}
                     </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <AssetStatusBadge status={asset.status} />
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <AssetConditionBadge condition={asset.condition} />
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">Área</span>
+                    <div className="flex items-center gap-1 text-gray-700 dark:text-gray-300 font-medium">
+                      <MapPin className="w-3 h-3" /> {asset.area?.name || '-'}
+                    </div>
+                  </div>
+                  <div className="flex flex-col col-span-2">
+                    <span className="text-xs text-gray-500">Responsable</span>
                     {asset.assigned_employee ? (
-                      <div className="text-sm">
-                        <div className="text-gray-900 dark:text-white">
-                          {asset.assigned_employee.full_name}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {asset.assigned_employee.dni}
-                        </div>
+                      <div className="flex items-center gap-1 text-gray-700 dark:text-gray-300 font-medium">
+                        <User className="w-3 h-3" /> {asset.assigned_employee.full_name}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400">Sin asignar</span>
+                      <span className="text-gray-400 italic">Sin asignar</span>
                     )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                    {asset.area?.name || '-'}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                    {asset.current_value ? formatCurrency(asset.current_value) : '-'}
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => handleView(asset)}
-                        className="p-1.5 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
-                        title="Ver detalle"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEdit(asset)}
-                        className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
-                        title="Editar"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleAssign(asset)}
-                        className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors"
-                        title="Asignar"
-                      >
-                        <UserPlus className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleTransfer(asset)}
-                        className="p-1.5 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded transition-colors"
-                        title="Transferir"
-                      >
-                        <ArrowRightLeft className="w-4 h-4" />
-                      </button>
-                      {asset.status !== ASSET_STATUS.BAJA && (
-                        <button
-                          onClick={() => handleDecommission(asset)}
-                          className="p-1.5 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-900/20 rounded transition-colors"
-                          title="Dar de Baja"
-                        >
-                          <Ban className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDelete(asset)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                        title="Archivar (Eliminar)"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+                  </div>
+                </div>
+
+                {/* Actions Footer */}
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700 mt-1">
+                  <AssetConditionBadge condition={asset.condition} />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleView(asset)}
+                      className="p-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg dark:bg-gray-700 dark:text-gray-300"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleEdit(asset)}
+                      className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg dark:bg-blue-900/20 dark:text-blue-400"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleAssign(asset)}
+                      className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg dark:bg-purple-900/20 dark:text-purple-400"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleTransfer(asset)}
+                      className="p-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg dark:bg-orange-900/20 dark:text-orange-400"
+                    >
+                      <ArrowRightLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View (Hidden on mobile) */}
+          <div className="card overflow-x-auto hidden lg:block">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Código
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Activo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Categoría
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Condición
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Asignado a
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Área
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Valor
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-48">
+                    Acciones
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                {filteredAssets.map(asset => (
+                  <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sm font-mono text-gray-900 dark:text-white">
+                        {asset.asset_code}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {asset.asset_name}
+                        </div>
+                        {(asset.brand || asset.model) && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {[asset.brand, asset.model].filter(Boolean).join(' - ')}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        {ASSET_CATEGORY_LABELS[asset.asset_category]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <AssetStatusBadge status={asset.status} />
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <AssetConditionBadge condition={asset.condition} />
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {asset.assigned_employee ? (
+                        <div className="text-sm">
+                          <div className="text-gray-900 dark:text-white">
+                            {asset.assigned_employee.full_name}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {asset.assigned_employee.dni}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Sin asignar</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                      {asset.area?.name || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      {asset.current_value ? formatCurrency(asset.current_value) : '-'}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleView(asset)}
+                          className="p-1.5 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
+                          title="Ver detalle"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(asset)}
+                          className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+                          title="Editar"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleAssign(asset)}
+                          className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors"
+                          title="Asignar"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleTransfer(asset)}
+                          className="p-1.5 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded transition-colors"
+                          title="Transferir"
+                        >
+                          <ArrowRightLeft className="w-4 h-4" />
+                        </button>
+                        {asset.status !== ASSET_STATUS.BAJA && (
+                          <button
+                            onClick={() => handleDecommission(asset)}
+                            className="p-1.5 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-900/20 rounded transition-colors"
+                            title="Dar de Baja"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(asset)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                          title="Archivar (Eliminar)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Modales */}

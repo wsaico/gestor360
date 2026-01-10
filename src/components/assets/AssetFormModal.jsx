@@ -302,8 +302,8 @@ const AssetFormModal = ({ isOpen, onClose, asset = null, onSuccess, stationId })
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4">
+      <div className="bg-white dark:bg-gray-800 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-4xl sm:rounded-lg shadow-xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
@@ -329,13 +329,13 @@ const AssetFormModal = ({ isOpen, onClose, asset = null, onSuccess, stationId })
 
         {/* Tabs */}
         <div className="border-b border-gray-200 dark:border-gray-700">
-          <nav className="flex space-x-4 px-6" aria-label="Tabs">
+          <nav className="flex space-x-4 px-4 sm:px-6 overflow-x-auto no-scrollbar" aria-label="Tabs">
             {Object.entries(TABS).map(([key, value]) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(value)}
                 className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                  py-3 sm:py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap
                   ${activeTab === value
                     ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400'
@@ -350,7 +350,7 @@ const AssetFormModal = ({ isOpen, onClose, asset = null, onSuccess, stationId })
 
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* GENERAL TAB */}
             {activeTab === TABS.GENERAL && (
               <div className="space-y-4">

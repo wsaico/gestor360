@@ -19,7 +19,9 @@ import {
   Truck,
   Smartphone,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Bus,
+  ChevronRight
 } from 'lucide-react'
 import { ROLES } from '@utils/constants'
 
@@ -35,7 +37,8 @@ const DashboardPage = () => {
     kpis: {
       employees: { total: 0, active: 0, inactive: 0, trend: 0 },
       sst: { inventory: 0, lowStock: 0, deliveries: 0 },
-      alimentacion: { todayOrders: 0, pendingOrders: 0, monthlyOrders: 0, avgCost: 0 }
+      alimentacion: { todayOrders: 0, pendingOrders: 0, monthlyOrders: 0, avgCost: 0 },
+      transport: { activeDrivers: 0, operationalVehicles: 0, activeTrips: 0 }
     },
     activity: []
   })
@@ -136,6 +139,18 @@ const DashboardPage = () => {
           />
         )}
 
+        {/* Card: Transporte (All Roles except Employee/Provider) */}
+        {!isProvider && !isEmployee && (
+          <StatsCard
+            title="Transporte Activo"
+            value={data.kpis.transport.activeTrips}
+            subtitle={`${data.kpis.transport.operationalVehicles} Vehículos / ${data.kpis.transport.activeDrivers} Conductores`}
+            icon={Bus}
+            color="indigo"
+            onClick={() => navigate('/transport/schedules')}
+          />
+        )}
+
         {/* Card: Costos/Revenue (Differs by role) */}
         {!isEmployee && (
           <StatsCard
@@ -171,7 +186,7 @@ const DashboardPage = () => {
             <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
               <ClipboardList className="w-5 h-5 text-primary-600" /> Accesos Rápidos
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
               {/* Admin Actions */}
               {!isProvider && !isEmployee && (
                 <>
@@ -264,9 +279,15 @@ const DashboardPage = () => {
 
         {/* Right Col: Recent Activity Feed (1/3 width) */}
         <div className="space-y-6">
-          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 h-full">
-            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">Actividad Reciente</h3>
-            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
+          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 h-full flex flex-col">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center justify-between">
+              <span>Actividad Reciente</span>
+              <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">En tiempo real</span>
+            </h3>
+
+            <div className="space-y-6 relative overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
+              {/* Timeline Line */}
+              <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-100 dark:bg-gray-700 z-0 hidden md:block" />
               {data.activity.length > 0 ? (
                 data.activity.map((item, idx) => (
                   <div key={item.id || idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group select-none">
@@ -378,7 +399,7 @@ const QuickAction = ({ title, icon: Icon, color, onClick }) => {
       className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-transparent hover:shadow-lg transition-all group w-full"
     >
       <div className={`
-         w-12 h-12 rounded-full mb-3 flex items-center justify-center text-white shadow-md
+         w-12 h-12 md:w-14 md:h-14 rounded-full mb-3 flex items-center justify-center text-white shadow-md
          bg-gradient-to-br ${gradients[color] || gradients.blue}
          group-hover:scale-110 transition-transform
        `}>
