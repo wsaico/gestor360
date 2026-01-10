@@ -18,7 +18,11 @@ const TransportSettlementsPage = () => {
 
     // Reconciliation State
     const [unbilledTrips, setUnbilledTrips] = useState([])
-    const [reconFilters, setReconFilters] = useState({ provider_id: '', date_start: '', date_end: '' })
+    const [reconFilters, setReconFilters] = useState({
+        provider_id: '',
+        date_start: format(new Date(), 'yyyy-MM-01'),
+        date_end: format(new Date(), 'yyyy-MM-dd')
+    })
     const [editingTrip, setEditingTrip] = useState(null) // { id, cost }
 
     // Settlements State
@@ -39,8 +43,8 @@ const TransportSettlementsPage = () => {
     // Generate Modal State
     const [genFormData, setGenFormData] = useState({
         provider_id: '',
-        date_start: '',
-        date_end: ''
+        date_start: format(new Date(), 'yyyy-MM-01'),
+        date_end: format(new Date(), 'yyyy-MM-dd')
     })
 
     useEffect(() => {
@@ -342,8 +346,12 @@ const TransportSettlementsPage = () => {
                                     {unbilledTrips.map(trip => (
                                         <tr key={trip.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
                                             <td>
-                                                <div className="font-bold text-gray-900 dark:text-gray-200">{trip.scheduled_date}</div>
-                                                <div className="text-xs text-gray-400 font-mono">{trip.departure_time}</div>
+                                                <div className="font-bold text-gray-900 dark:text-gray-200">
+                                                    {format(new Date(`${trip.scheduled_date}T${trip.departure_time}Z`), 'dd/MM/yyyy')}
+                                                </div>
+                                                <div className="text-xs text-gray-400 font-mono">
+                                                    {format(new Date(`${trip.scheduled_date}T${trip.departure_time}Z`), 'HH:mm')}
+                                                </div>
                                             </td>
                                             {/* Validation Status */}
                                             <td>
@@ -365,10 +373,10 @@ const TransportSettlementsPage = () => {
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-bold text-primary-600 uppercase flex items-center gap-1 mb-0.5">
                                                         <Building2 className="w-3 h-3" />
-                                                        {trip.route?.organization?.name || 'ORG'}
+                                                        {trip.route?.organization?.name || <span className="opacity-50 text-gray-400">-- Sin Cliente --</span>}
                                                     </span>
                                                     <span className="font-medium text-gray-900 dark:text-white">
-                                                        {trip.route?.name || 'Sin Ruta'}
+                                                        {trip.route?.name || <span className="opacity-50 italic text-gray-400">Sin Ruta Asignada</span>}
                                                     </span>
                                                 </div>
                                             </td>

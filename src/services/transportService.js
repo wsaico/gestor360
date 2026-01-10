@@ -484,27 +484,34 @@ class TransportService {
     // --- RECONCILIATION METHODS ---
 
     async getUnbilledTrips(filters = {}) {
-        let q = supabase
-            .from('transport_schedules')
-            .select(`
-                *,
-                route:transport_routes(name, organization:organizations(name)),
-                provider:system_users(username),
-                driver:transport_drivers(first_name, last_name, dni),
-                vehicle:transport_vehicles(plate_number)
-            `)
-            .eq('status', 'COMPLETED')
-            .is('settlement_id', null)
-            .order('scheduled_date', { ascending: false })
+        try {
+            const { data, error } = await supabase.rpc('get_unbilled_trips_unified', {
+                p_provider_id: filters.providerId || null,
+                p_date_from: filters.dateFrom || null,
+                p_date_to: filters.dateTo || null,
+                p_station_id: filters.stationId || null
+            })
 
-        if (filters.providerId) q = q.eq('provider_id', filters.providerId)
-        if (filters.dateFrom) q = q.gte('scheduled_date', filters.dateFrom)
-        if (filters.dateTo) q = q.lte('scheduled_date', filters.dateTo)
-        if (filters.stationId) q = q.eq('station_id', filters.stationId)
+            if (error) throw error
 
-        const { data, error } = await q
-        if (error) throw error
-        return data
+            // Map flat RPC result to nested structure expected by UI
+            return data.map(trip => ({
+                ...trip,
+                route: {
+                    name: trip.route_name,
+                    organization: { name: trip.organization_name }
+                },
+                provider: { username: trip.provider_username },
+                driver: {
+                    first_name: trip.driver_first_name,
+                    last_name: trip.driver_last_name
+                },
+                vehicle: { plate_number: trip.vehicle_plate }
+            }))
+        } catch (error) {
+            console.error('Error fetching unbilled trips:', error)
+            throw error
+        }
     }
 
     async updateScheduleCost(id, newCost, notes) {

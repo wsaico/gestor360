@@ -10,8 +10,11 @@ import {
   Settings,
   ChevronDown,
   Building2,
-  XCircle
+  XCircle,
+  Sun,
+  Moon
 } from 'lucide-react'
+import NotificationDropdown from '@components/common/NotificationDropdown'
 
 /**
  * Header de la aplicación
@@ -20,7 +23,7 @@ import {
 const Header = ({ onMenuClick, sidebarOpen }) => {
   // Usar stations y selectStation del contexto global
   const { user, station, stations, loadingStations, logout, updateStation, selectStation } = useAuth()
-  const { headerColor, darkMode } = useTheme()
+  const { headerColor, darkMode, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
@@ -61,7 +64,7 @@ const Header = ({ onMenuClick, sidebarOpen }) => {
   return (
     <header
       className={`
-        h-16 border-b flex items-center justify-between px-6 transition-all duration-300 z-20
+        h-20 border-b flex items-center justify-between px-6 transition-all duration-300 z-20
         ${darkMode
           ? (headerColor === '#ffffff'
             ? 'bg-slate-900/80 backdrop-blur-md border-slate-700/50 shadow-lg'
@@ -83,12 +86,12 @@ const Header = ({ onMenuClick, sidebarOpen }) => {
 
         {/* Selector de estación para admin global sin estación */}
         {user?.role === 'ADMIN' && !station && (
-          <div className="hidden md:flex items-center space-x-2 text-sm">
-            <Building2 className="w-4 h-4 text-amber-500" />
-            <span className="opacity-80 font-medium">Seleccionar Estación:</span>
+          <div className="flex items-center space-x-2 text-sm">
+            <Building2 className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="opacity-80 font-medium hidden sm:inline">Seleccionar Sucursal:</span>
             <select
               onChange={(e) => handleSelectStation(e.target.value)}
-              className="border border-amber-300 dark:border-amber-600 rounded-md px-2 py-1 text-sm bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white focus:ring-amber-500 focus:border-amber-500"
+              className="border border-amber-300 dark:border-amber-600 rounded-md px-2 py-1 text-xs sm:text-sm bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white focus:ring-amber-500 focus:border-amber-500 max-w-[150px] sm:max-w-none"
               defaultValue=""
             >
               <option value="" disabled className="dark:bg-gray-800">
@@ -105,11 +108,11 @@ const Header = ({ onMenuClick, sidebarOpen }) => {
 
         {/* Información de la estación (si tiene estación asignada) */}
         {station && (
-          <div className="hidden md:flex items-center space-x-2 text-sm">
-            <Building2 className="w-4 h-4 opacity-50" />
-            <span className="opacity-70">Estación:</span>
-            <span className="font-semibold">{station.name}</span>
-            <span className="opacity-60">({station.code})</span>
+          <div className="flex items-center space-x-2 text-sm">
+            <Building2 className="w-4 h-4 opacity-50 shrink-0" />
+            <span className="opacity-70 hidden sm:inline">Sucursal:</span>
+            <span className="font-semibold text-xs sm:text-sm truncate max-w-[120px] sm:max-w-xs">{station.name}</span>
+            <span className="opacity-60 hidden sm:inline">({station.code})</span>
 
             {/* Botón para limpiar estación si es admin global */}
             {user?.role === 'ADMIN' && (
@@ -119,8 +122,8 @@ const Header = ({ onMenuClick, sidebarOpen }) => {
                   // Forzar recarga o navegar a dashboard para limpiar vista
                   navigate('/dashboard')
                 }}
-                className="ml-2 p-1 opacity-60 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-white/10"
-                title="Cambiar estación"
+                className="ml-2 p-1 opacity-60 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-white/10 shrink-0"
+                title="Cambiar sucursal"
               >
                 <XCircle className="w-4 h-4" />
               </button>
@@ -130,18 +133,18 @@ const Header = ({ onMenuClick, sidebarOpen }) => {
       </div>
 
       {/* Lado derecho - Notificaciones y menú de usuario */}
-      <div className="flex items-center space-x-4">
-        {/* Notificaciones */}
+      <div className="flex items-center space-x-2 sm:space-x-4">
+        {/* Theme Switch */}
         <button
-          className="relative opacity-70 hover:opacity-100 focus:outline-none"
-          title="Notificaciones"
+          onClick={toggleTheme}
+          className="p-2 opacity-70 hover:opacity-100 focus:outline-none rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+          title={darkMode ? "Modo Claro" : "Modo Oscuro"}
         >
-          <Bell className="w-5 h-5" />
-          {/* Badge de notificaciones pendientes */}
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
-            3
-          </span>
+          {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
+
+        {/* Notificaciones */}
+        <NotificationDropdown />
 
         {/* Menú de usuario */}
         <div className="relative">

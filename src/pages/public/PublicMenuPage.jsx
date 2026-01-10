@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { format, addDays } from 'date-fns'
 import {
     UtensilsCrossed, Coffee, Sun, Moon, Check, AlertCircle,
     ChevronRight, User, MapPin, CheckCircle2,
@@ -75,7 +76,7 @@ const PublicMenuPage = () => {
     }, [historyFilter, customStartDate, customEndDate])
 
     // Selection State
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]) // Today
+    const [filterDate, setFilterDate] = useState(format(new Date(), 'yyyy-MM-dd')) // Today
     const [selectedMenu, setSelectedMenu] = useState(null)
     const [selections, setSelections] = useState({})
     const [suggestions, setSuggestions] = useState('')
@@ -88,11 +89,11 @@ const PublicMenuPage = () => {
 
     // Auto-select tomorrow if no menus for today (intelligent fallback)
     useEffect(() => {
-        if (menus.length > 0 && filterDate === new Date().toISOString().split('T')[0]) {
+        if (menus.length > 0 && filterDate === format(new Date(), 'yyyy-MM-dd')) {
             const todayMenus = menus.filter(m => m.serve_date === filterDate)
             if (todayMenus.length === 0) {
                 // No menus for today, check if there are menus for tomorrow
-                const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+                const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
                 const tomorrowMenus = menus.filter(m => m.serve_date === tomorrow)
                 if (tomorrowMenus.length > 0) {
                     console.log('No menus for today, auto-selecting tomorrow')
@@ -145,8 +146,8 @@ const PublicMenuPage = () => {
     }
 
     const getDynamicDateText = (dateString) => {
-        const today = new Date().toISOString().split('T')[0]
-        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+        const today = format(new Date(), 'yyyy-MM-dd')
+        const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
 
         if (dateString === today) return 'hoy'
         if (dateString === tomorrow) return 'mañana'
@@ -239,8 +240,8 @@ const PublicMenuPage = () => {
 
     const loadStationData = async (stId, roleName, empId) => {
         try {
-            const today = new Date().toISOString().split('T')[0]
-            const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+            const today = format(new Date(), 'yyyy-MM-dd')
+            const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
 
             // 1. Fetch Menus
             const menusData = await menuService.getAll(stId, {
@@ -710,14 +711,14 @@ const PublicMenuPage = () => {
                             <h2 className="text-xl font-bold text-gray-900 leading-tight">
                                 Hola, <span className="text-primary-600">{displayName}</span>
                             </h2>
-                            <p className="text-xs text-gray-500">¿Qué te gustaría comer {filterDate === new Date().toISOString().split('T')[0] ? 'hoy' : 'mañana'}?</p>
+                            <p className="text-xs text-gray-500">¿Qué te gustaría comer {filterDate === format(new Date(), 'yyyy-MM-dd') ? 'hoy' : 'mañana'}?</p>
                         </div>
 
                         {/* Date Tabs */}
                         <div className="flex p-4 gap-3 overflow-x-auto scrollbar-hide bg-white border-b border-gray-100 sticky top-[72px] z-20">
                             {[
-                                { label: 'Hoy', date: new Date().toISOString().split('T')[0] },
-                                { label: 'Mañana', date: new Date(Date.now() + 86400000).toISOString().split('T')[0] }
+                                { label: 'Hoy', date: format(new Date(), 'yyyy-MM-dd') },
+                                { label: 'Mañana', date: format(addDays(new Date(), 1), 'yyyy-MM-dd') }
                             ].map((tab) => {
                                 const isActive = filterDate === tab.date;
                                 return (

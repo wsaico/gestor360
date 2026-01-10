@@ -1,50 +1,72 @@
 import supabase from './supabase'
 
-const CHECK_INTERVAL = 24 * 60 * 60 * 1000 // 24 horas en milisegundos
-
-class NotificationService {
+export const notificationService = {
     /**
-     * Verifica si es necesario enviar notificaciones de resumen diario
-     * Se ejecuta una vez al día por estación/usuario
+     * Obtiene las notificaciones del header (cumpleaños, documentos, epps)
+     * @param {string} stationId - ID de la estación
+     * @returns {Promise<Object>} - { birthdays: [], docs: [], epps: [] }
      */
-    async checkAndNotifyRenewals(stationId, userId) {
-        if (!stationId || !userId) return
-
-        const lastCheckKey = `last_notification_check_${stationId}_${userId}`
-        const lastCheck = localStorage.getItem(lastCheckKey)
-        const now = new Date().getTime()
-
-        // Si ya chequeamos hoy, no hacer nada (Debounce diario)
-        if (lastCheck && (now - parseInt(lastCheck)) < CHECK_INTERVAL) {
-            
-            return
-        }
-
+    async getNotifications(stationId) {
         try {
-            
+            if (!stationId) return { birthdays: [], docs: [], epps: [] }
 
-            // Invocar a la Edge Function
-            // Esta función se encarga de TODO: leer config, filtrar, agrupar y enviar correos.
-            const { data, error } = await supabase.functions.invoke('send-email-alerts', {
-                body: { station_id: stationId, triggered_by: userId }
+            const { data, error } = await supabase.rpc('get_header_notifications', {
+                p_station_id: stationId
             })
 
-            if (error) {
-                // Si la función no existe o falla la red, manejamos el error con elegancia
-                console.warn('⚠️ Servicio de alertas no disponible (Edge Function no responde). Se omitirá la verificación.')
-                console.debug('Detalles del error:', error)
-                return
-            }
+            if (error) throw error
+            return data
+        } catch (error) {
+            console.error('Error fetching header notifications:', error)
+            return { birthdays: [], docs: [], epps: [] }
+        }
+    },
 
-            
+    /**
+     * Verifica si se deben enviar notificaciones de renovaciones y otros eventos por correo.
+     * Se ejecuta una vez al día, triggered por el login de un Admin/Supervisor.
+     * Respeta los toggles de configuración definidos en el backend (Edge Function).
+     */
+    async checkAndNotifyRenewals(user, station) {
+        if (!user || !station) return
 
-            // Guardar marca de tiempo para no repetir hoy
-            localStorage.setItem(lastCheckKey, now.toString())
+        // Solo Admins o Supervisores disparan el chequeo para evitar sobrecarga
+        const allowedRoles = ['ADMIN', 'SUPERVISOR', 'GERENTE']
+        // Check both role (string) and role_name (if exists)
+        const userRole = user.role_name || user.role
+        if (!allowedRoles.includes(userRole)) return
+
+        const KEY = `gestor360_last_email_check_${station.id}`
+        const lastCheck = localStorage.getItem(KEY)
+        const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+
+        // Si ya se revisó hoy, no hacer nada
+        if (lastCheck === today) return
+
+        try {
+            console.log('Running daily email notification check...')
+
+            // Invocar Edge Function (que internamente revisa los Toggles de App Settings)
+            const { data, error } = await supabase.functions.invoke('send-email-alerts', {
+                body: {
+                    action: 'scheduled_run',
+                    station_id: station.id,
+                    user_email: user.email // Para log o referencia
+                }
+            })
+
+            if (error) throw error
+
+            console.log('Email check result:', data)
+
+            // Marcar como revisado hoy
+            localStorage.setItem(KEY, today)
 
         } catch (error) {
-            console.error('Error en servicio de notificaciones:', error)
+            console.error('Error running daily email check:', error)
+            // No guardamos el flag para reintentar luego si falló
         }
     }
 }
 
-export default new NotificationService()
+export default notificationService

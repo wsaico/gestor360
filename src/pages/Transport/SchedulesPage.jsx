@@ -51,10 +51,12 @@ const SchedulesPage = () => {
 
     // UI States
     const [loading, setLoading] = useState(true)
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
+    const [dateRange, setDateRange] = useState({
+        from: format(new Date(), 'yyyy-MM-01'),
+        to: format(new Date(), 'yyyy-MM-dd')
+    })
     const [loadingResources, setLoadingResources] = useState(false)
 
-    // Modal
     // Modal
     const [showModal, setShowModal] = useState(false)
     const [editingSchedule, setEditingSchedule] = useState(null) // ID if editing
@@ -85,7 +87,7 @@ const SchedulesPage = () => {
 
     useEffect(() => {
         if (station?.id) loadSchedules()
-    }, [filterDate, station])
+    }, [dateRange, station])
 
     const loadInitialData = async () => {
         try {
@@ -108,8 +110,8 @@ const SchedulesPage = () => {
         try {
             setLoading(true)
             const data = await transportService.getSchedules({
-                dateFrom: filterDate,
-                dateTo: filterDate,
+                dateFrom: dateRange.from,
+                dateTo: dateRange.to,
                 stationId: station.id
             })
             setSchedules(data)
@@ -149,7 +151,7 @@ const SchedulesPage = () => {
         setFormData({
             route_id: '',
             provider_id: '',
-            scheduled_date: filterDate,
+            scheduled_date: new Date().toISOString().split('T')[0],
             departure_time: '07:00',
             vehicle_id: '',
             driver_id: '',
@@ -423,12 +425,21 @@ const SchedulesPage = () => {
             <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-gray-800 p-2 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-4 flex-1 px-4">
                     <Calendar className="w-5 h-5 text-gray-400" />
-                    <input
-                        type="date"
-                        value={filterDate}
-                        onChange={e => setFilterDate(e.target.value)}
-                        className="bg-transparent border-none focus:ring-0 text-lg font-medium text-gray-700 dark:text-gray-200"
-                    />
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="date"
+                            value={dateRange.from}
+                            onChange={e => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200"
+                        />
+                        <span className="text-gray-400">-</span>
+                        <input
+                            type="date"
+                            value={dateRange.to}
+                            onChange={e => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200"
+                        />
+                    </div>
 
                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
