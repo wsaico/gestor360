@@ -153,7 +153,7 @@ const LoginPage = () => {
         <div className="mb-10 lg:mb-16">
           <div className="w-16 h-16 md:w-20 md:h-20 bg-purple-50 rounded-2xl flex items-center justify-center mb-6">
             <img
-              src="/gestor 360 logo modo claro (1).png"
+              src="/logo-light.png"
               alt="Gestor360 Logo"
               className="w-full h-full object-contain p-2"
               onError={(e) => {
