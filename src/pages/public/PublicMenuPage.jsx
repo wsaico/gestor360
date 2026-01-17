@@ -15,7 +15,7 @@ import AnnouncementModal from '../../components/AnnouncementModal' // Import Mod
 import ConfirmDialog from '../../components/ConfirmDialog' // Import Confirm Dialog
 import { announcementService } from '../../services/announcementService' // Import Service
 import { MEAL_TYPES, MEAL_TYPE_LABELS, ORDER_TYPES, DINING_OPTIONS, DINING_OPTION_LABELS } from '@utils/constants'
-import { formatDate } from '@utils/helpers'
+import { formatDate, getLocalISOString } from '@utils/helpers'
 
 const STEPS = {
     DNI_INPUT: 0,
@@ -76,7 +76,7 @@ const PublicMenuPage = () => {
     }, [historyFilter, customStartDate, customEndDate])
 
     // Selection State
-    const [filterDate, setFilterDate] = useState(format(new Date(), 'yyyy-MM-dd')) // Today
+    const [filterDate, setFilterDate] = useState(getLocalISOString(new Date())) // Today
     const [selectedMenu, setSelectedMenu] = useState(null)
     const [selections, setSelections] = useState({})
     const [suggestions, setSuggestions] = useState('')
@@ -88,20 +88,26 @@ const PublicMenuPage = () => {
     const [showSuggestions, setShowSuggestions] = useState(false) // Collapsible suggestions
 
     // Auto-select tomorrow if no menus for today (intelligent fallback)
+    /*
     useEffect(() => {
-        if (menus.length > 0 && filterDate === format(new Date(), 'yyyy-MM-dd')) {
+        const todayStr = getLocalISOString(new Date())
+        if (menus.length > 0 && filterDate === todayStr) {
             const todayMenus = menus.filter(m => m.serve_date === filterDate)
             if (todayMenus.length === 0) {
                 // No menus for today, check if there are menus for tomorrow
-                const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
-                const tomorrowMenus = menus.filter(m => m.serve_date === tomorrow)
+                const tomorrowDate = new Date()
+                tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+                const tomorrowStr = getLocalISOString(tomorrowDate)
+
+                const tomorrowMenus = menus.filter(m => m.serve_date === tomorrowStr)
                 if (tomorrowMenus.length > 0) {
                     console.log('No menus for today, auto-selecting tomorrow')
-                    setFilterDate(tomorrow)
+                    setFilterDate(tomorrowStr)
                 }
             }
         }
     }, [menus, filterDate])
+    */
 
     // Helpers
     const getMealColor = (type) => {
@@ -146,8 +152,10 @@ const PublicMenuPage = () => {
     }
 
     const getDynamicDateText = (dateString) => {
-        const today = format(new Date(), 'yyyy-MM-dd')
-        const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+        const today = getLocalISOString(new Date())
+        const tomorrowDate = new Date()
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+        const tomorrow = getLocalISOString(tomorrowDate)
 
         if (dateString === today) return 'hoy'
         if (dateString === tomorrow) return 'mañana'
@@ -240,13 +248,19 @@ const PublicMenuPage = () => {
 
     const loadStationData = async (stId, roleName, empId) => {
         try {
-            const today = format(new Date(), 'yyyy-MM-dd')
-            const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+            const today = new Date()
+            const tomorrow = new Date(today)
+            tomorrow.setDate(tomorrow.getDate() + 1)
+
+            const todayStr = getLocalISOString(today)
+            const tomorrowStr = getLocalISOString(tomorrow)
+
+            console.log('DEBUG DATES:', { todayStr, tomorrowStr, filterDate, timezoneOffset: new Date().getTimezoneOffset() })
 
             // 1. Fetch Menus
             const menusData = await menuService.getAll(stId, {
-                startDate: today,
-                endDate: tomorrow
+                startDate: todayStr,
+                endDate: tomorrowStr
             })
             setMenus(menusData)
 
@@ -262,7 +276,7 @@ const PublicMenuPage = () => {
             // 3. Check for Existing Orders for Today/Tomorrow (Lightweight check)
             try {
                 // Use getPublicOrders to avoid RLS lookup issues on joined tables
-                const orders = await foodOrderService.getPublicOrders(empId, today, tomorrow)
+                const orders = await foodOrderService.getPublicOrders(empId, todayStr, tomorrowStr)
                 setExistingOrder(orders)
             } catch (err) {
                 console.warn('Error fetching existing orders', err)
@@ -476,6 +490,7 @@ const PublicMenuPage = () => {
             }
 
             // Show confirmation dialog with dynamic date
+            // Using getDynamicDateText with the serve_date ensures it says "Mañana" if the menu is for tomorrow
             const dateText = getDynamicDateText(selectedMenu.serve_date)
             const mealTypeText = selectedMenu.meal_type === MEAL_TYPES.BREAKFAST ? 'desayuno' :
                 selectedMenu.meal_type === MEAL_TYPES.LUNCH ? 'almuerzo' : 'cena'
@@ -711,34 +726,43 @@ const PublicMenuPage = () => {
                             <h2 className="text-xl font-bold text-gray-900 leading-tight">
                                 Hola, <span className="text-primary-600">{displayName}</span>
                             </h2>
-                            <p className="text-xs text-gray-500">¿Qué te gustaría comer {filterDate === format(new Date(), 'yyyy-MM-dd') ? 'hoy' : 'mañana'}?</p>
+                            <p className="text-xs text-gray-500">¿Qué te gustaría comer {filterDate === getLocalISOString(new Date()) ? 'hoy' : 'mañana'}?</p>
                         </div>
 
                         {/* Date Tabs */}
                         <div className="flex p-4 gap-3 overflow-x-auto scrollbar-hide bg-white border-b border-gray-100 sticky top-[72px] z-20">
-                            {[
-                                { label: 'Hoy', date: format(new Date(), 'yyyy-MM-dd') },
-                                { label: 'Mañana', date: format(addDays(new Date(), 1), 'yyyy-MM-dd') }
-                            ].map((tab) => {
-                                const isActive = filterDate === tab.date;
-                                return (
-                                    <button
-                                        key={tab.date}
-                                        onClick={() => {
-                                            setFilterDate(tab.date)
-                                            setSelectedMenu(null)
-                                            setSelections({})
-                                            setSuggestions('')
-                                        }}
-                                        className={`flex-1 py-2 px-4 rounded-full text-sm font-bold whitespace-nowrap transition-all ${isActive
-                                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 ring-2 ring-primary-100'
-                                            : 'bg-gray-100 text-gray-500'
-                                            }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                )
-                            })}
+                            {(() => {
+                                const todayDate = new Date()
+                                const tomorrowDate = new Date(todayDate)
+                                tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+
+                                const todayStr = getLocalISOString(todayDate)
+                                const tomorrowStr = getLocalISOString(tomorrowDate)
+
+                                return [
+                                    { label: 'Hoy', date: todayStr },
+                                    { label: 'Mañana', date: tomorrowStr }
+                                ].map((tab) => {
+                                    const isActive = filterDate === tab.date;
+                                    return (
+                                        <button
+                                            key={tab.date}
+                                            onClick={() => {
+                                                setFilterDate(tab.date)
+                                                setSelectedMenu(null)
+                                                setSelections({})
+                                                setSuggestions('')
+                                            }}
+                                            className={`flex-1 py-2 px-4 rounded-full text-sm font-bold whitespace-nowrap transition-all ${isActive
+                                                ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 ring-2 ring-primary-100'
+                                                : 'bg-gray-100 text-gray-500'
+                                                }`}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    )
+                                })
+                            })()}
                         </div>
 
                         {/* Error Alert in Step 1 */}

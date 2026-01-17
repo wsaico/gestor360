@@ -5,7 +5,9 @@ import transportService from '@services/transportService'
 import systemUserService from '@services/systemUserService'
 import employeeService from '@services/employeeService'
 import organizationService from '@services/organizationService'
+import OrganizationSelect from '@components/common/OrganizationSelect'
 import Modal from '@components/Modal'
+import ConfirmDialog from '@components/ConfirmDialog'
 import {
     Calendar,
     Clock,
@@ -27,11 +29,14 @@ import {
     ArrowDown,
     Building2,
     Lock,
-    CheckCircle2 // For validation badge
+    CheckCircle2, // For validation badge
+    RotateCcw,
+    Copy
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { getNormalizedOrganizationName } from '@utils/organizationUtils'
 
 const SchedulesPage = () => {
     const { user, station } = useAuth()
@@ -70,6 +75,9 @@ const SchedulesPage = () => {
     const [selectedSchedules, setSelectedSchedules] = useState(new Set())
     const [isValidating, setIsValidating] = useState(false)
 
+    // Confirm Dialog State
+    const [scheduleToDuplicate, setScheduleToDuplicate] = useState(null)
+
     const [formData, setFormData] = useState({
         route_id: '',
         provider_id: '',
@@ -101,7 +109,7 @@ const SchedulesPage = () => {
                 organizationService.getAll(true)
             ])
             setRoutes(routesData.filter(r => r.active))
-            setProviders(usersData.filter(u => u.role === 'PROVIDER' || u.role_name === 'PROVIDER'))
+            setProviders(usersData.filter(u => u.role === 'TRANSPORT_PROVIDER' || u.role_name === 'TRANSPORT_PROVIDER'))
             setEmployees(employeesData.data || [])
             setOrganizations(orgsData || [])
         } catch (error) {
@@ -256,7 +264,6 @@ const SchedulesPage = () => {
         const emojiCal = '\uD83D\uDCC5' // 📅
         const emojiClock = '\u23F0' // ⏰
         const emojiPin = '\uD83D\uDCCD' // 📍
-        const emojiDriver = '\uD83D\uDC68\u200D\u2708\uFE0F' // 👨‍✈️ (Actually just use generic man or steer) -> Let's use Wheel ☸️ or just text
 
         let text = `*SERVICIO DE TRANSPORTE - ${orgName}*\n`
         text += `${emojiCal} Fecha: ${format(new Date(schedule.scheduled_date), 'dd/MM/yyyy')}\n`
@@ -289,6 +296,37 @@ const SchedulesPage = () => {
             return s.status === 'PENDING' || s.status === 'IN_PROGRESS'
         })
         .sort((a, b) => a.departure_time.localeCompare(b.departure_time))
+
+    // Simplified Handler: Just opens the dialog
+    const handleDuplicateAsReturn = (schedule) => {
+        setScheduleToDuplicate(schedule)
+    }
+
+    // Actual Execution: Called by ConfirmDialog
+    const executeDuplicate = async () => {
+        if (!scheduleToDuplicate) return;
+
+        try {
+            // Calcular fecha sugerida (mismo día + 9 horas por defecto)
+            const exitDate = new Date(`${scheduleToDuplicate.scheduled_date}T${scheduleToDuplicate.departure_time}`);
+            const returnDate = new Date(exitDate.getTime() + 9 * 60 * 60 * 1000);
+
+            const payload = {
+                originalScheduleId: scheduleToDuplicate.id,
+                targetDate: returnDate.toISOString().split('T')[0],
+                targetTime: returnDate.toTimeString().slice(0, 5)
+            };
+
+            await transportService.duplicateScheduleAsReturn(payload);
+            notify.success("Retorno generado correctamente");
+            loadSchedules();
+        } catch (error) {
+            console.error(error);
+            notify.error("Error al generar retorno: " + error.message);
+        } finally {
+            setScheduleToDuplicate(null);
+        }
+    }
 
     // Bulk Validation Logic
     const handleToggleSelect = (id) => {
@@ -390,7 +428,7 @@ const SchedulesPage = () => {
                         </div>
                         {isProvider ? 'Mis Asignaciones de Viaje' : 'Programación de Salidas'}
                     </h1>
-                    <p className="text-gray-500 mt-2 ml-14 hidden md:block">
+                    <p className="text-gray-500 dark:text-gray-400 mt-2 ml-14 hidden md:block">
                         {isProvider ? 'Gestione conductores y vehículos para sus viajes asignados' : `Gestión de despachos para ${station?.name || '...'}`}
                     </p>
                 </div>
@@ -421,7 +459,7 @@ const SchedulesPage = () => {
                     <div className="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 min-w-[140px]">
                         <p className="text-xs text-blue-400 font-bold uppercase tracking-wider">En Ruta</p>
                         <div className="flex items-center gap-2">
-                            <p className="text-2xl font-bold text-blue-600">{stats.inProgress}</p>
+                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.inProgress}</p>
                             {stats.inProgress > 0 && <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span></span>}
                         </div>
                     </div>
@@ -437,14 +475,14 @@ const SchedulesPage = () => {
                             type="date"
                             value={dateRange.from}
                             onChange={e => setDateRange(prev => ({ ...prev, from: e.target.value }))}
-                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200"
+                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200 dark:[color-scheme:dark]"
                         />
                         <span className="text-gray-400">-</span>
                         <input
                             type="date"
                             value={dateRange.to}
                             onChange={e => setDateRange(prev => ({ ...prev, to: e.target.value }))}
-                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200"
+                            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700 dark:text-gray-200 dark:[color-scheme:dark]"
                         />
                     </div>
 
@@ -491,7 +529,7 @@ const SchedulesPage = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.03 }}
                                     onClick={() => toggleCard(schedule.id)}
-                                    className={`p-4 active:bg-gray-50 dark:active:bg-gray-700/50 transition-colors cursor-pointer ${schedule.status === 'COMPLETED' ? 'opacity-70 bg-gray-50/50' : ''}`}
+                                    className={`p-4 active:bg-gray-50 dark:active:bg-gray-700/50 transition-colors cursor-pointer border-b border-gray-100 dark:border-gray-700 ${schedule.status === 'COMPLETED' ? 'opacity-70 bg-gray-50/50 dark:bg-gray-800/50' : ''}`}
                                 >
                                     {/* Top Row: Time, Status, Route */}
                                     <div className="flex justify-between items-start mb-2">
@@ -509,9 +547,9 @@ const SchedulesPage = () => {
                                             </div>
                                         </div>
                                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase border ${schedule.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                schedule.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                    schedule.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                        'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                            schedule.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                schedule.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                    'bg-yellow-50 text-yellow-700 border-yellow-200'
                                             }`}>
                                             {schedule.status === 'IN_PROGRESS' ? 'En Ruta' :
                                                 schedule.status === 'COMPLETED' ? 'Fin' :
@@ -522,7 +560,7 @@ const SchedulesPage = () => {
                                     {/* Middle Row: Driver & Vehicle */}
                                     <div className="flex flex-col gap-1 mb-3 pl-1 border-l-2 border-gray-100 dark:border-gray-700">
                                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                            <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">
+                                            <div className="w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px]">
                                                 {schedule.driver ? '👮' : '❓'}
                                             </div>
                                             <span className={schedule.driver ? 'font-medium' : 'text-gray-400 italic'}>
@@ -530,7 +568,7 @@ const SchedulesPage = () => {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                            <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">
+                                            <div className="w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px]">
                                                 {schedule.vehicle ? '🚌' : '❓'}
                                             </div>
                                             <span className={`font-mono text-xs ${schedule.vehicle ? '' : 'text-gray-400 italic'}`}>
@@ -543,12 +581,12 @@ const SchedulesPage = () => {
                                     <div className="flex items-center justify-between mt-3">
                                         <div className="flex -space-x-2 items-center">
                                             {Array.from({ length: Math.min(3, schedule.passengers_manifest?.length || 0) }).map((_, i) => (
-                                                <div key={i} className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                                <div key={i} className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-gray-300">
                                                     <Users className="w-3 h-3" />
                                                 </div>
                                             ))}
                                             {(schedule.passengers_manifest?.length || 0) > 3 && (
-                                                <div className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                                <div className="w-7 h-7 rounded-full border border-white dark:border-gray-800 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-gray-300">
                                                     +{schedule.passengers_manifest.length - 3}
                                                 </div>
                                             )}
@@ -564,6 +602,15 @@ const SchedulesPage = () => {
                                             >
                                                 <Share2 className="w-4 h-4" />
                                             </button>
+                                            {(schedule.status === 'PENDING' || schedule.status === 'COMPLETED') && !isProvider && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDuplicateAsReturn(schedule); }}
+                                                    className="btn btn-sm btn-circle btn-ghost text-indigo-600 bg-indigo-50"
+                                                    title="Generar Retorno"
+                                                >
+                                                    <Copy className="w-4 h-4 transform rotate-180" />
+                                                </button>
+                                            )}
                                             {(schedule.status === 'PENDING' || isProvider) && (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleOpenEdit(schedule); }}
@@ -587,7 +634,7 @@ const SchedulesPage = () => {
                                                 const emp = employees.find(e => e.id === pid)
                                                 return (
                                                     <div key={pid} className="flex items-center gap-2 mb-1.5 text-sm">
-                                                        <span className="w-5 h-5 rounded bg-gray-100 text-gray-500 text-[10px] flex items-center justify-center font-bold">
+                                                        <span className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-[10px] flex items-center justify-center font-bold">
                                                             {pidx + 1}
                                                         </span>
                                                         <span className="text-gray-700 dark:text-gray-300 truncate">
@@ -624,18 +671,19 @@ const SchedulesPage = () => {
                                             />
                                         </th>
                                     )}
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Hora</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Estado</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider min-w-[200px]">Cliente / Ruta</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider min-w-[180px]">Recurso</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Pasajeros</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Hora</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Estado</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[200px]">Cliente / Ruta</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[180px]">Recurso</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Pasajeros</th>
                                     {(isProvider || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') && (
                                         <>
-                                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Validación</th>
-                                            <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">Costo</th>
+                                            <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Validación</th>
+                                            <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Costo</th>
+                                            <th className="px-6 py-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Organización</th>
                                         </>
                                     )}
-                                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">Acciones</th>
+                                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -647,7 +695,7 @@ const SchedulesPage = () => {
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: idx * 0.03 }}
                                             onClick={() => schedule.status === 'PENDING' && !isProvider && handleOpenEdit(schedule)}
-                                            className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-default ${schedule.status === 'COMPLETED' ? 'opacity-60 bg-gray-50/50' : ''
+                                            className={`group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-default border-b border-gray-100 dark:border-gray-700/50 ${schedule.status === 'COMPLETED' ? 'bg-gray-50 dark:bg-gray-900/30' : 'bg-white dark:bg-gray-900'
                                                 }`}
                                         >
                                             {/* Checkbox for Bulk Validation */}
@@ -789,6 +837,9 @@ const SchedulesPage = () => {
                                                             </span>
                                                         </div>
                                                     </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+                                                        {getNormalizedOrganizationName(schedule.route?.organization?.name)}
+                                                    </td>
                                                 </>
                                             )}
 
@@ -798,17 +849,28 @@ const SchedulesPage = () => {
                                                     {/* WhatsApp Share Button */}
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleShareWhatsapp(schedule); }}
-                                                        className="btn btn-sm btn-circle btn-ghost text-green-600 bg-green-50 hover:bg-green-100 hover:text-green-700 border border-green-200"
+                                                        className="btn btn-sm btn-circle btn-ghost text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40 hover:text-green-700 border border-green-200 dark:border-green-800"
                                                         title="Enviar WhatsApp"
                                                     >
                                                         <Share2 className="w-4 h-4" />
                                                     </button>
 
+                                                    {/* Duplicate as Return Button */}
+                                                    {(schedule.status === 'PENDING' || schedule.status === 'COMPLETED') && !isProvider && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDuplicateAsReturn(schedule); }}
+                                                            className="btn btn-sm btn-circle btn-ghost text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800"
+                                                            title="Generar Retorno (Duplicar Invertido)"
+                                                        >
+                                                            <Copy className="w-4 h-4 transform rotate-180" />
+                                                        </button>
+                                                    )}
+
                                                     {/* Edit Button (Only for relevant users/status) */}
                                                     {(schedule.status === 'PENDING' || isProvider) && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleOpenEdit(schedule); }}
-                                                            className="btn btn-sm btn-circle btn-ghost text-gray-500 hover:text-primary-600 hover:bg-gray-100"
+                                                            className="btn btn-sm btn-circle btn-ghost text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-primary-400"
                                                             title={isProvider ? "Asignar Recursos" : "Editar"}
                                                         >
                                                             {isProvider ? <Car className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
@@ -944,24 +1006,17 @@ const SchedulesPage = () => {
                                         <label className="label">
                                             <span className="label-text font-bold text-gray-700 dark:text-gray-300">Cliente / Organización</span>
                                         </label>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                <Building2 className="h-5 w-5 text-gray-400" />
-                                            </div>
-                                            <select
-                                                className="select select-bordered w-full pl-10 bg-gray-50 dark:bg-gray-900 focus:bg-white transition-colors h-12 text-base"
-                                                value={selectedOrgFilter}
-                                                onChange={e => {
-                                                    setSelectedOrgFilter(e.target.value)
-                                                    setFormData(prev => ({ ...prev, route_id: '' })) // Reset route when org changes
-                                                }}
-                                            >
-                                                <option value="">-- Todos los Clientes --</option>
-                                                {organizations.map(org => (
-                                                    <option key={org.id} value={org.id}>{org.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
+                                        <OrganizationSelect
+                                            organizations={organizations}
+                                            value={selectedOrgFilter}
+                                            onChange={e => {
+                                                setSelectedOrgFilter(e.target.value)
+                                                setFormData(prev => ({ ...prev, route_id: '' }))
+                                            }}
+                                            showIcon={true}
+                                            label="-- Todos los Clientes --"
+                                            className="w-full"
+                                        />
                                     </div>
 
                                     {/* Route Selection */}
@@ -974,7 +1029,7 @@ const SchedulesPage = () => {
                                                 <MapPin className="h-5 w-5 text-gray-400" />
                                             </div>
                                             <select
-                                                className="select select-bordered w-full pl-10 bg-gray-50 dark:bg-gray-900 focus:bg-white transition-colors h-12 text-base"
+                                                className="select select-bordered w-full pl-10 bg-gray-50 dark:bg-gray-800 dark:text-gray-200 focus:bg-white dark:focus:bg-gray-700 transition-colors h-12 text-base"
                                                 value={formData.route_id}
                                                 onChange={e => setFormData({ ...formData, route_id: e.target.value })}
                                             >
@@ -998,7 +1053,7 @@ const SchedulesPage = () => {
                                                 </div>
                                                 <input
                                                     type="date"
-                                                    className="input input-bordered w-full pl-10 bg-gray-50 dark:bg-gray-900 focus:bg-white"
+                                                    className="input input-bordered w-full pl-10 bg-gray-50 dark:bg-gray-800 dark:text-gray-200 focus:bg-white dark:focus:bg-gray-700 dark:[color-scheme:dark]"
                                                     value={formData.scheduled_date}
                                                     onChange={e => setFormData({ ...formData, scheduled_date: e.target.value })}
                                                 />
@@ -1012,7 +1067,7 @@ const SchedulesPage = () => {
                                                 </div>
                                                 <input
                                                     type="time"
-                                                    className="input input-bordered w-full pl-10 bg-gray-50 dark:bg-gray-900 focus:bg-white"
+                                                    className="input input-bordered w-full pl-10 bg-gray-50 dark:bg-gray-800 dark:text-gray-200 focus:bg-white dark:focus:bg-gray-700 dark:[color-scheme:dark]"
                                                     value={formData.departure_time}
                                                     onChange={e => setFormData({ ...formData, departure_time: e.target.value })}
                                                 />
@@ -1040,7 +1095,7 @@ const SchedulesPage = () => {
                                             <Briefcase className="h-5 w-5 text-gray-400" />
                                         </div>
                                         <select
-                                            className="select select-bordered w-full pl-10 bg-gray-50 dark:bg-gray-900 focus:bg-white transition-colors h-12 text-base"
+                                            className="select select-bordered w-full pl-10 bg-gray-50 dark:bg-gray-800 dark:text-gray-200 focus:bg-white dark:focus:bg-gray-700 transition-colors h-12 text-base"
                                             value={formData.provider_id}
                                             onChange={e => handleProviderChange(e.target.value)}
                                         >
@@ -1068,7 +1123,7 @@ const SchedulesPage = () => {
                                                     <div className="form-control">
                                                         <label className="label"><span className="label-text text-sm font-medium text-gray-500">Conductor</span></label>
                                                         <select
-                                                            className="select select-bordered w-full select-sm bg-white"
+                                                            className="select select-bordered w-full select-sm bg-white dark:bg-gray-800 dark:text-gray-200"
                                                             value={formData.driver_id}
                                                             onChange={e => setFormData({ ...formData, driver_id: e.target.value })}
                                                         >
@@ -1085,7 +1140,7 @@ const SchedulesPage = () => {
                                                     <div className="form-control">
                                                         <label className="label"><span className="label-text text-sm font-medium text-gray-500">Vehículo</span></label>
                                                         <select
-                                                            className="select select-bordered w-full select-sm bg-white"
+                                                            className="select select-bordered w-full select-sm bg-white dark:bg-gray-800 dark:text-gray-200"
                                                             value={formData.vehicle_id}
                                                             onChange={e => setFormData({ ...formData, vehicle_id: e.target.value })}
                                                         >
@@ -1220,8 +1275,8 @@ const SchedulesPage = () => {
                                                     key={emp.id}
                                                     onClick={() => togglePassenger(emp.id)}
                                                     className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border group ${isSelected
-                                                        ? 'bg-white shadow-md border-primary-500 ring-1 ring-primary-500 z-10'
-                                                        : 'bg-white/50 border-transparent hover:bg-white hover:shadow-sm'
+                                                        ? 'bg-white dark:bg-gray-800 shadow-md border-primary-500 ring-1 ring-primary-500 z-10'
+                                                        : 'bg-white/50 dark:bg-gray-800/40 border-transparent hover:bg-white dark:hover:bg-gray-800 hover:shadow-sm'
                                                         }`}
                                                 >
                                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${isSelected ? 'bg-primary-100 text-primary-700' : 'bg-gray-200 text-gray-500 group-hover:bg-gray-300'
@@ -1276,8 +1331,20 @@ const SchedulesPage = () => {
                         <ArrowRight className="w-4 h-4" />
                     </button>
                 </div>
-            </Modal >
-        </div >
+            </Modal>
+
+            {/* Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={!!scheduleToDuplicate}
+                title="Generar Retorno Automático"
+                message={`¿Deseas crear una nueva salida de retorno basada en la ruta "${scheduleToDuplicate?.route?.name || '...'}"? Esto invertirá el origen/destino y copiará la lista de pasajeros.`}
+                confirmText="Sí, generar retorno"
+                cancelText="Cancelar"
+                onConfirm={executeDuplicate}
+                onCancel={() => setScheduleToDuplicate(null)}
+                type="info"
+            />
+        </div>
     )
 }
 

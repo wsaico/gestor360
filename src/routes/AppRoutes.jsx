@@ -291,7 +291,7 @@ const AppRoutes = () => {
         <Route
           path="transport/routes"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.TRANSPORT_PROVIDER]}>
               <RoutesPage />
             </ProtectedRoute>
           }
@@ -299,7 +299,7 @@ const AppRoutes = () => {
         <Route
           path="transport/schedules"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER, ROLES.TRANSPORT_PROVIDER, ROLES.TRANSPORT_SCHEDULER]}>
               <SchedulesPage />
             </ProtectedRoute>
           }
@@ -307,7 +307,7 @@ const AppRoutes = () => {
         <Route
           path="transport/driver"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER, ROLES.TRANSPORT_PROVIDER]}>
               <DriverDashboard />
             </ProtectedRoute>
           }
@@ -315,7 +315,7 @@ const AppRoutes = () => {
         <Route
           path="transport/audit"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.TRANSPORT_PROVIDER]}>
               <TransportAuditPage />
             </ProtectedRoute>
           }
@@ -323,7 +323,7 @@ const AppRoutes = () => {
         <Route
           path="transport/fleet"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROVIDER, ROLES.TRANSPORT_PROVIDER]}>
               <TransportFleetPage />
             </ProtectedRoute>
           }
@@ -331,7 +331,7 @@ const AppRoutes = () => {
         <Route
           path="transport/settlements"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER, ROLES.TRANSPORT_PROVIDER]}>
               <TransportSettlementsPage />
             </ProtectedRoute>
           }
@@ -367,18 +367,34 @@ const AppRoutes = () => {
         <Route
           path="admin/configuracion"
           element={
-            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.PROVIDER, ROLES.MONITOR, ROLES.TRANSPORT_PROVIDER]}>
               <SettingsLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<GeneralSettings />} />
+          <Route index element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+              <GeneralSettings />
+            </ProtectedRoute>
+          } />
           <Route path="apariencia" element={<AppearanceSettings />} />
           <Route path="perfil" element={<ProfileSettings />} />
           <Route path="notificaciones" element={<NotificationSettings />} />
-          <Route path="areas" element={<AreaSettings />} />
-          <Route path="roles" element={<RoleSettings />} />
-          <Route path="seguridad" element={<SecuritySettings />} />
+          <Route path="areas" element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+              <AreaSettings />
+            </ProtectedRoute>
+          } />
+          <Route path="roles" element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+              <RoleSettings />
+            </ProtectedRoute>
+          } />
+          <Route path="seguridad" element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+              <SecuritySettings />
+            </ProtectedRoute>
+          } />
 
         </Route>
       </Route>

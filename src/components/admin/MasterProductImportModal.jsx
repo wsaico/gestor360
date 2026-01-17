@@ -167,7 +167,7 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [], area
             // Build data object
             const productData = {
                 name: name,
-                sap_code: row[idxSap] || '',
+                sap_code: row[idxSap] || null,
                 description: row[idxDesc] || '',
                 base_price: row[idxPrice] ? parseFloat(row[idxPrice]) : 0,
                 unit_measurement: row[idxUnit] || 'UNIDAD',
@@ -194,9 +194,25 @@ const MasterProductImportModal = ({ isOpen, onClose, onSuccess, types = [], area
         setValidating(false)
     }
 
-    // --- 4. Import Action ---
     const handleImport = async () => {
-        const validRows = previewData.filter(item => item.status === 'VALID').map(item => item.data)
+        let validRows = previewData.filter(item => item.status === 'VALID').map(item => item.data)
+
+        // Deduplicate by sap_code within the batch (taking the last one found)
+        const uniqueMap = new Map()
+        validRows.forEach(row => {
+            if (row.sap_code) {
+                uniqueMap.set(row.sap_code, row)
+            } else {
+                // If no sap_code, treat as unique entry (using a temp key or just add array later)
+                // Actually, duplicate nulls are allowed in DB if not constrained, but here we want them.
+                // We'll separate items with sap_code from items without.
+            }
+        })
+
+        const itemsWithCode = Array.from(uniqueMap.values())
+        const itemsWithoutCode = validRows.filter(r => !r.sap_code)
+
+        validRows = [...itemsWithCode, ...itemsWithoutCode]
 
         if (validRows.length === 0) {
             notify.warning('No hay filas válidas para importar')

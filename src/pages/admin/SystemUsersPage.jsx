@@ -172,11 +172,7 @@ const UserModal = ({ user, stations, rolesList, onClose, onSuccess }) => {
     setSaving(true)
     try {
       const payload = { ...formData }
-      // Remove empty password if editing
       if (isEdit && !payload.password) delete payload.password
-
-      // Auto-assign station logic if needed? 
-      // For now, trust the form selection.
 
       if (isEdit) {
         await systemUserService.update(user.id, payload)
@@ -186,7 +182,7 @@ const UserModal = ({ user, stations, rolesList, onClose, onSuccess }) => {
       onSuccess()
     } catch (error) {
       console.error(error)
-      alert(error.message)
+      alert(error.message || 'Error desconocido')
     } finally {
       setSaving(false)
     }

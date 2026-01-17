@@ -155,7 +155,7 @@ class MasterProductService {
         try {
             const { data, error } = await supabase
                 .from('master_products')
-                .insert(products)
+                .upsert(products, { onConflict: 'sap_code', ignoreDuplicates: false })
                 .select()
             if (error) throw error
             return data

@@ -3,6 +3,16 @@ import { es } from 'date-fns/locale'
 import { EPP_ALERT_THRESHOLDS } from './constants'
 
 /**
+ * Obtiene la fecha actual en formato YYYY-MM-DD respetando la zona horaria local del navegador.
+ * Evita el problema de que toISOString() devuelva el día siguiente en horas de la tarde/noche (UTC).
+ */
+export const getLocalISOString = (userDate = new Date()) => {
+  const offset = userDate.getTimezoneOffset()
+  const localDate = new Date(userDate.getTime() - (offset * 60 * 1000))
+  return localDate.toISOString().split('T')[0]
+}
+
+/**
  * Formatea una fecha en formato español
  */
 export const formatDate = (date, formatStr = 'dd/MM/yyyy') => {

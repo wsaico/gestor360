@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@contexts/AuthContext'
 import transportService from '@services/transportService'
 import organizationService from '@services/organizationService'
+import { getNormalizedOrganizationName } from '@utils/organizationUtils'
+import OrganizationSelect from '@components/common/OrganizationSelect'
 import Modal from '@components/Modal'
 import {
     Map as MapIcon,
@@ -14,7 +16,7 @@ import {
     Search,
     MapPin
 } from 'lucide-react'
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents, Polyline, Popup } from 'react-leaflet'
 import L from 'leaflet'
 
 // Fix Leaflet Icons
@@ -297,7 +299,7 @@ const RoutesPage = () => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {routes.map(route => (
-                        <div key={route.id} className="card p-5 hover:shadow-lg transition-all border-l-4 border-primary-500">
+                        <div key={route.id} className="card p-5 hover:shadow-lg transition-all border-l-4 border-primary-500 bg-white dark:bg-gray-800 shadow-sm">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="bg-primary-50 dark:bg-primary-900/20 p-2 rounded-lg text-primary-600 dark:text-primary-400">
                                     <Bus className="w-6 h-6" />
@@ -312,14 +314,12 @@ const RoutesPage = () => {
                                 </div>
                             </div>
 
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                                {route.name}
-                            </h3>
+                            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{route.name}</h3>
 
-                            <div className="space-y-2 mt-4 text-sm">
+                            <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Building2 className="w-4 h-4" />
-                                    <span className="font-medium">{route.organization?.name || 'Sin Organización'}</span>
+                                    <span className="font-medium">{getNormalizedOrganizationName(route.organization?.name)}</span>
                                 </div>
 
                                 <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
@@ -383,17 +383,14 @@ const RoutesPage = () => {
 
                         <div>
                             <label className="label">Organización / Cliente</label>
-                            <select
-                                className="input"
+                            <OrganizationSelect
+                                className="w-full h-12"
                                 required
                                 value={formData.organization_id}
                                 onChange={e => setFormData({ ...formData, organization_id: e.target.value })}
-                            >
-                                <option value="">Seleccione...</option>
-                                {organizations.map(org => (
-                                    <option key={org.id} value={org.id}>{org.name}</option>
-                                ))}
-                            </select>
+                                organizations={organizations}
+                                label="Seleccione..."
+                            />
                         </div>
 
                         {/* Address Search & Toggles */}
@@ -404,20 +401,20 @@ const RoutesPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => { setActiveField('origin'); setSearchQuery(formData.origin_address || '') }}
-                                    className={`flex-1 py-1 px-3 rounded-md text-sm font-bold transition-all ${activeField === 'origin' ? 'bg-white text-green-600 shadow' : 'text-gray-500'}`}
+                                    className={`flex-1 py-1 px-3 rounded-md text-sm font-bold transition-all ${activeField === 'origin' ? 'bg-white dark:bg-gray-600 text-green-600 dark:text-green-400 shadow' : 'text-gray-500 dark:text-gray-400'}`}
                                 >
                                     Punto A (Origen)
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setActiveField('destination'); setSearchQuery(formData.destination_address || '') }}
-                                    className={`flex-1 py-1 px-3 rounded-md text-sm font-bold transition-all ${activeField === 'destination' ? 'bg-white text-blue-600 shadow' : 'text-gray-500'}`}
+                                    className={`flex-1 py-1 px-3 rounded-md text-sm font-bold transition-all ${activeField === 'destination' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-500 dark:text-gray-400'}`}
                                 >
                                     Punto B (Destino)
                                 </button>
                             </div>
 
-                            <label className="label flex items-center gap-2">
+                            <label className="label flex items-center gap-2 dark:text-gray-300">
                                 <Search className="w-4 h-4" />
                                 {activeField === 'origin' ? 'Buscar Dirección de Origen' : 'Buscar Dirección de Destino'}
                             </label>
@@ -444,7 +441,7 @@ const RoutesPage = () => {
                                     {isSearching ? '...' : 'Buscar'}
                                 </button>
                             </div>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {activeField === 'origin' ?
                                     'Click en el mapa para fijar el PUNTO DE RECOJO (Pin Verde)' :
                                     'Click en el mapa para fijar el PUNTO DE DESTINO (Pin Azul)'}
@@ -494,7 +491,7 @@ const RoutesPage = () => {
                     </div>
 
                     {/* RIGHT: Map Picker */}
-                    <div className="h-[400px] lg:h-auto min-h-[400px] bg-gray-100 rounded-xl overflow-hidden relative border border-gray-300 shadow-inner">
+                    <div className="h-[400px] lg:h-auto min-h-[400px] bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden relative border border-gray-300 dark:border-gray-700 shadow-inner">
                         <MapContainer
                             center={[formData.destination_lat || -11.7752, formData.destination_lng || -75.4983]}
                             zoom={14}
@@ -509,14 +506,14 @@ const RoutesPage = () => {
                             {/* Origin Marker (Greenish?) - Leaflet default is Blue, we might need a custom icon or just use distinct popups */}
                             {formData.origin_lat && (
                                 <Marker position={[formData.origin_lat, formData.origin_lng]} icon={originIcon}>
-                                    <L.Popup>ORIGEN: {formData.origin_address}</L.Popup>
+                                    <Popup>ORIGEN: {formData.origin_address}</Popup>
                                 </Marker>
                             )}
 
                             {/* Destination Marker */}
                             {formData.destination_lat && (
                                 <Marker position={[formData.destination_lat, formData.destination_lng]} icon={destinationIcon}>
-                                    <L.Popup>DESTINO: {formData.destination_address}</L.Popup>
+                                    <Popup>DESTINO: {formData.destination_address}</Popup>
                                 </Marker>
                             )}
 
@@ -554,7 +551,7 @@ const RoutesPage = () => {
                     </div>
                 </form>
             </Modal>
-        </div>
+        </div >
     )
 }
 

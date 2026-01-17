@@ -148,6 +148,78 @@ class TransportService {
         }
     }
 
+    /**
+     * Duplicates a schedule as a return trip:
+     * 1. Swaps Origin/Destination logic (finds reverse route)
+     * 2. Copies passengers
+     * 3. Sets new date/time
+     */
+    async duplicateScheduleAsReturn({ originalScheduleId, targetDate, targetTime }) {
+        try {
+            // 1. Get Original Schedule
+            const { data: original, error: fetchError } = await supabase
+                .from('transport_schedules')
+                .select(`
+                    *,
+                    route:transport_routes(*)
+                `)
+                .eq('id', originalScheduleId)
+                .single()
+
+            if (fetchError) throw fetchError;
+
+            // 2. Find Reverse Route
+            // Strategy: Look for route where Origin~=Dest AND Dest~=Origin
+            // Since we don't have perfect geocoding, we rely on fuzzy match or exact coordinate match if available.
+            // Simplified MVP: Look for route with same Org that is NOT the current one, 
+            // and maybe has specific name pattern? 
+            // BETTER: Let's assume the user has created "Jauja - Aeropuerto" and "Aeropuerto - Jauja".
+            // We search for a route belonging to same Organization that is != currentRoute.
+
+            // Try to find exact reverse based on stored addresses if possible, or just pick the "Other" route for this org if only 2 exist.
+            const { data: allRoutes } = await supabase
+                .from('transport_routes')
+                .select('*')
+                .eq('active', true)
+                .eq('organization_id', original.route.organization_id)
+
+            // Logic: Find route distinct from current one. 
+            // If strictly 2 routes exist for this org (A and B), and current is A, pick B.
+            let targetRoute = null;
+            if (allRoutes && allRoutes.length === 2) {
+                targetRoute = allRoutes.find(r => r.id !== original.route_id);
+            } else if (allRoutes && allRoutes.length > 2) {
+                // Try fuzzy name match? "Jauja - Aero" vs "Aero - Jauja"
+                // This is risky. Fallback to: Same Route (so user edits it) OR first distinct one?
+                // Safe bet: If no obvious pair, re-use SAME route but user must verify. 
+                // OR: Create a "Reverse" property in DB later.
+                // For now: First distinct route found.
+                targetRoute = allRoutes.find(r => r.id !== original.route_id);
+            }
+
+            // Fallback: Use same route if nothing else found (user must manually edit cost/route if needed)
+            const routeToUse = targetRoute || original.route;
+
+            // 3. Create New Schedule
+            const { data: newSchedule, error: createError } = await supabase.rpc('create_transport_schedule', {
+                p_route_id: routeToUse.id,
+                p_provider_id: original.provider_id, // Keep same provider? Yes typically.
+                p_scheduled_date: targetDate,
+                p_departure_time: targetTime,
+                p_vehicle_plate: null, // Reset vehicle to be safe or keep original? Reset preferred.
+                p_passengers_manifest: original.passengers_manifest,
+                p_station_id: original.station_id
+            })
+
+            if (createError) throw createError;
+            return newSchedule;
+
+        } catch (error) {
+            console.error('Error duplicating schedule:', error)
+            throw error
+        }
+    }
+
     async updateScheduleStatus(id, status) {
         try {
             const { data, error } = await supabase
@@ -303,7 +375,7 @@ class TransportService {
             const { data, error } = await supabase
                 .from('system_users')
                 .select('id, username, role')
-                .eq('role', 'PROVIDER')
+                .eq('role', 'TRANSPORT_PROVIDER')
 
             if (error) throw error
             return data

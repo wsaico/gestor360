@@ -353,14 +353,19 @@ class FoodOrderService {
    */
   async delete(id) {
     try {
-      const { error } = await supabase
+      const { count, error } = await supabase
         .from('food_orders')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', id)
 
       if (error) {
         throw new Error(error.message || 'Error al eliminar el pedido')
       }
+
+      if (count === 0) {
+        throw new Error('No se pudo eliminar el pedido. Verifique permisos o si ya fue eliminado.')
+      }
+
       return true
     } catch (error) {
       console.error('Error deleting food order:', error)

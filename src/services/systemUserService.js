@@ -55,7 +55,8 @@ class SystemUserService {
                     data: {
                         username: userData.username,
                         role: userData.role,
-                        station_id: userData.station_id
+                        // Sanitizar station_id: enviar NULL si es string vacío
+                        station_id: userData.station_id === '' ? null : userData.station_id
                     }
                 }
             })
@@ -69,32 +70,20 @@ class SystemUserService {
                 throw new Error('No se pudo crear el usuario en Auth')
             }
 
-            // 2. Crear registro en system_users vinculado por ID
-            // Preparamos los datos para la tabla
-            const systemUserData = {
-                id: authData.user.id, // VINCULACIÓN CRÍTICA
-                email: userData.email,
-                username: userData.username,
-                role: userData.role,
-                station_id: userData.station_id,
-                is_active: userData.is_active,
-                // Guardamos un hash dummy ya que la autenticación real es por Supabase Auth
-                password_hash: 'managed_by_supabase_auth'
-            }
+            // 2. El registro en system_users se crea automáticamente por Trigger (handle_new_user)
+            // Esperamos un momento breve para propagación si fuera necesario, o simplemente consultamos.
 
+            // Verificamos que se haya creado
             const { data, error } = await supabase
                 .from('system_users')
-                .insert([systemUserData])
                 .select()
+                .eq('id', authData.user.id)
                 .single()
 
             if (error) {
-                // Si falla insert en DB, deberíamos idealmente borrar el usuario de Auth (rollback manual)
-                // Por ahora lanzamos el error
-                if (error.code === '23505') {
-                    throw new Error('El usuario o email ya existe en la base de datos')
-                }
-                throw error
+                // Si no se encuentra, el trigger falló.
+                console.error('Error fetching auto-created user:', error)
+                throw new Error('El usuario se creó en Auth pero falló la sincronización de perfil.')
             }
 
             // 3. Enviar correo de bienvenida (No bloqueante)
@@ -140,10 +129,16 @@ class SystemUserService {
                 .update(profileData)
                 .eq('id', id)
                 .select()
-                .single()
+            // Removed .single() to avoid PGRST116 if RLS hides the return row
 
             if (error) throw error
-            return data
+
+            // Revert: We want to know if it failed!
+            if (!data || data.length === 0) {
+                throw new Error('No se pudo actualizar el usuario (Bloqueo de seguridad RLS).')
+            }
+
+            return data[0]
         } catch (error) {
             console.error('Error updating user:', error)
             throw error

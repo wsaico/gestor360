@@ -128,6 +128,9 @@ export default function AnnouncementsPage() {
                 display_targets: formData.display_targets
             }
 
+            // DEBUG: Ver qué se está enviando
+            // alert('Enviando: ' + JSON.stringify(payload.display_targets))
+
             if (editingItem) {
                 await announcementService.updateAnnouncement(editingItem.id, payload)
             } else {

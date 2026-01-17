@@ -146,7 +146,7 @@ const TransportFleetPage = () => {
                         </div>
                         Gestión de Flota
                     </h1>
-                    <p className="text-gray-500 mt-1 ml-14">Administra tus conductores y vehículos asignados.</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1 ml-14">Administra tus conductores y vehículos asignados.</p>
                 </div>
 
                 <button
@@ -182,7 +182,7 @@ const TransportFleetPage = () => {
                     <input
                         type="text"
                         placeholder="Buscar..."
-                        className="input input-bordered input-sm w-full pl-9 bg-transparent"
+                        className="input input-bordered input-sm w-full pl-9 bg-transparent dark:text-gray-200"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
@@ -247,7 +247,7 @@ const TransportFleetPage = () => {
                                     ) : (
                                         <>
                                             <h3 className="font-bold text-2xl tracking-tight text-gray-900 dark:text-white mb-1 font-mono uppercase">{item.plate_number}</h3>
-                                            <p className="text-sm text-gray-500 mb-4">{item.brand} {item.model} • {item.year || '2024'}</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{item.brand} {item.model} • {item.year || '2024'}</p>
 
                                             <div className="flex items-center justify-between">
                                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${item.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-200' :
@@ -269,7 +269,7 @@ const TransportFleetPage = () => {
                                 <Search className="w-10 h-10 text-gray-300" />
                             </div>
                             <h3 className="text-lg font-medium text-gray-900 dark:text-white">No se encontraron resultados</h3>
-                            <p className="text-gray-500">Intenta ajustar tu búsqueda o crea un nuevo registro.</p>
+                            <p className="text-gray-500 dark:text-gray-400">Intenta ajustar tu búsqueda o crea un nuevo registro.</p>
                         </div>
                     )}
                 </motion.div>
@@ -285,9 +285,9 @@ const TransportFleetPage = () => {
                     {activeTab === 'drivers' ? (
                         <div className="grid grid-cols-2 gap-4">
                             <div className="form-control col-span-2">
-                                <label className="label-text font-medium mb-1">Empresa Proveedora</label>
+                                <label className="label-text font-medium mb-1 dark:text-gray-300">Empresa Proveedora</label>
                                 {isProvider ? (
-                                    <input type="text" className="input input-bordered w-full bg-gray-100" value={user.username || 'Mi Empresa'} disabled />
+                                    <input type="text" className="input input-bordered w-full bg-gray-100 dark:bg-gray-700 dark:text-gray-300" value={user.username || 'Mi Empresa'} disabled />
                                 ) : (
                                     <select required className="select select-bordered w-full"
                                         value={formData.provider_id || ''} onChange={e => setFormData({ ...formData, provider_id: e.target.value })}>
@@ -321,8 +321,8 @@ const TransportFleetPage = () => {
                         <div className="grid grid-cols-2 gap-4">
                             {!isProvider && (
                                 <div className="form-control col-span-2">
-                                    <label className="label-text font-medium mb-1">Empresa Proveedora</label>
-                                    <select required className="select select-bordered w-full"
+                                    <label className="label-text font-medium mb-1 dark:text-gray-300">Empresa Proveedora</label>
+                                    <select required className="select select-bordered w-full dark:bg-gray-800 dark:text-white"
                                         value={formData.provider_id || ''} onChange={e => setFormData({ ...formData, provider_id: e.target.value })}>
                                         <option value="">Seleccione Empresa...</option>
                                         {providers.map(p => <option key={p.id} value={p.id}>{p.username}</option>)}

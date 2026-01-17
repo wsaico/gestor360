@@ -13,6 +13,7 @@ import {
     Layers
 } from 'lucide-react'
 import menuService from '@services/menuService'
+import { getLocalISOString } from '@utils/helpers'
 import { MEAL_TYPES, MEAL_TYPE_LABELS } from '@utils/constants'
 import { useAuth } from '@contexts/AuthContext'
 
@@ -91,7 +92,7 @@ const MenuWizard = ({ stationId, providerId, menuToEdit, onClose, onSuccess }) =
         } else {
             const tomorrow = new Date()
             tomorrow.setDate(tomorrow.getDate() + 1)
-            setFormData(prev => ({ ...prev, serve_date: tomorrow.toISOString().split('T')[0] }))
+            setFormData(prev => ({ ...prev, serve_date: getLocalISOString(tomorrow) }))
         }
     }, [menuToEdit])
 

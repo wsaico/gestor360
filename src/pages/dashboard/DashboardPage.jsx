@@ -68,7 +68,8 @@ const DashboardPage = () => {
   const isGlobalAdmin = hasRole(ROLES.ADMIN) && !station
   const isStationAdmin = hasRole(ROLES.ADMIN) && station
   const isProvider = hasRole(ROLES.PROVIDER)
-  const isEmployee = !hasRole(ROLES.ADMIN) && !hasRole(ROLES.PROVIDER)
+  const isTransportScheduler = hasRole(ROLES.TRANSPORT_SCHEDULER)
+  const isEmployee = !hasRole(ROLES.ADMIN) && !hasRole(ROLES.PROVIDER) && !hasRole(ROLES.TRANSPORT_SCHEDULER)
 
   if (loading) return <DashboardSkeleton />
 
@@ -87,7 +88,8 @@ const DashboardPage = () => {
           <p className="text-gray-600 dark:text-gray-400">
             {isGlobalAdmin ? 'Vista Global Corporativa' :
               isStationAdmin ? `Administrando: ${station.name}` :
-                isProvider ? 'Panel de Concesionario' : 'Mi Portal del Colaborador'}
+                isProvider ? 'Panel de Concesionario' :
+                  isTransportScheduler ? 'Programación de Transporte' : 'Mi Portal del Colaborador'}
           </p>
         </div>
 
@@ -104,7 +106,7 @@ const DashboardPage = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
 
         {/* Card: RRHH (Admin Only) */}
-        {!isProvider && !isEmployee && (
+        {!isProvider && !isEmployee && !isTransportScheduler && (
           <StatsCard
             title="Total Colaboradores"
             value={data.kpis.employees.active}
@@ -116,18 +118,20 @@ const DashboardPage = () => {
           />
         )}
 
-        {/* Card: Alimentación (All Roles) */}
-        <StatsCard
-          title={isProvider ? "Platos a Servir Hoy" : "Pedidos de Hoy"}
-          value={data.kpis.alimentacion.todayOrders}
-          subtitle={isProvider ? "Pendientes de atención" : "En toda la estación"}
-          icon={UtensilsCrossed}
-          color="orange"
-          onClick={() => navigate(isProvider ? '/alimentacion/menus' : '/alimentacion/pedidos')}
-        />
+        {/* Card: Alimentación (All Roles EXCEPT Scheduler) */}
+        {!isTransportScheduler && (
+          <StatsCard
+            title={isProvider ? "Platos a Servir Hoy" : "Pedidos de Hoy"}
+            value={data.kpis.alimentacion.todayOrders}
+            subtitle={isProvider ? "Pendientes de atención" : "En toda la estación"}
+            icon={UtensilsCrossed}
+            color="orange"
+            onClick={() => navigate(isProvider ? '/alimentacion/menus' : '/alimentacion/pedidos')}
+          />
+        )}
 
         {/* Card: SST Inventory (Admin Only) */}
-        {!isProvider && !isEmployee && (
+        {!isProvider && !isEmployee && !isTransportScheduler && (
           <StatsCard
             title="Stock Crítico EPP"
             value={data.kpis.sst.lowStock}
@@ -139,8 +143,8 @@ const DashboardPage = () => {
           />
         )}
 
-        {/* Card: Transporte (All Roles except Employee/Provider) */}
-        {!isProvider && !isEmployee && (
+        {/* Card: Transporte (All Roles except Employee/Provider... Scheduler SEES THIS) */}
+        {(!isProvider && !isEmployee) || isTransportScheduler ? (
           <StatsCard
             title="Transporte Activo"
             value={data.kpis.transport.activeTrips}
@@ -149,10 +153,10 @@ const DashboardPage = () => {
             color="indigo"
             onClick={() => navigate('/transport/schedules')}
           />
-        )}
+        ) : null}
 
-        {/* Card: Costos/Revenue (Differs by role) */}
-        {!isEmployee && (
+        {/* Card: Costos/Revenue (Differs by role) - HIDE for Scheduler */}
+        {!isEmployee && !isTransportScheduler && (
           <StatsCard
             title={isProvider ? "Ingresos del Mes" : "Gasto Alimentación"}
             value={data.kpis.alimentacion.monthlyOrders} // Placeholder for Real Cost
@@ -188,7 +192,7 @@ const DashboardPage = () => {
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
               {/* Admin Actions */}
-              {!isProvider && !isEmployee && (
+              {!isProvider && !isEmployee && !isTransportScheduler && (
                 <>
                   <QuickAction
                     title="Nuevo Empleado"
@@ -205,13 +209,27 @@ const DashboardPage = () => {
                 </>
               )}
 
-              {/* Common Actions */}
-              <QuickAction
-                title="Realizar Pedido"
-                icon={UtensilsCrossed}
-                color="orange"
-                onClick={() => navigate('/alimentacion/pedidos')}
-              />
+              {/* Common Actions - HIDE for Scheduler */}
+              {!isTransportScheduler && (
+                <QuickAction
+                  title="Realizar Pedido"
+                  icon={UtensilsCrossed}
+                  color="orange"
+                  onClick={() => navigate('/alimentacion/pedidos')}
+                />
+              )}
+
+              {/* Scheduler Specific Actions */}
+              {isTransportScheduler && (
+                <>
+                  <QuickAction
+                    title="Nueva Salida"
+                    icon={Bus}
+                    color="indigo"
+                    onClick={() => navigate('/transport/schedules')}
+                  />
+                </>
+              )}
 
               {/* Provider Actions */}
               {isProvider && (

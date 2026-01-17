@@ -25,7 +25,7 @@ import stationService from '@services/stationService'
 import pricingService from '@services/pricingService'
 import menuService from '@services/menuService' // Add import
 import { ROLES, MEAL_TYPE_LABELS } from '@utils/constants'
-import { formatDate } from '@utils/helpers'
+import { formatDate, getLocalISOString } from '@utils/helpers'
 import { useNotification } from '@contexts/NotificationContext'
 import Pagination from '@components/common/Pagination'
 import reportService from '@services/reportService'
@@ -45,12 +45,42 @@ const FoodOrdersPage = () => {
     // Filters
     const [stations, setStations] = useState([])
     const [selectedStationId, setSelectedStationId] = useState(station?.id || '') // Initialize with current station
+
+    // Use local date to avoid timezone issues
     const [dateRange, setDateRange] = useState({
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(Date.now() + 86400000).toISOString().split('T')[0]
+        startDate: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0'),
+        endDate: new Date(Date.now() + 86400000).getFullYear() + '-' + String(new Date(Date.now() + 86400000).getMonth() + 1).padStart(2, '0') + '-' + String(new Date(Date.now() + 86400000).getDate()).padStart(2, '0')
     })
+
+    // Better Local Date helper inside component if import not ready yet, 
+    // but better to import it. Since I cannot change imports in replace easily without context,
+    // I will use direct safe construction here similar to getLocalISOString logic but inline for safety in this replace block.
+    // Actually, I can import it in a separate step or just use the vanilla JS safe way here.
+    // Safe Vanilla JS Local Date String:
+    const getSafeLocalDate = (d = new Date()) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    // Re-init state with safe local dates
+    useEffect(() => {
+        const today = new Date()
+        const tomorrow = new Date(today)
+        tomorrow.setDate(tomorrow.getDate() + 1) // Provide safe tomorrow
+
+        setDateRange({
+            startDate: getSafeLocalDate(today),
+            endDate: getSafeLocalDate(tomorrow) // Default view usually shows range? Or just today?
+            // Original code: startDate: today, endDate: tomorrow (24h later)
+            // Let's stick to initial logic but SAFE
+        })
+    }, [])
+
     const [statusFilter, setStatusFilter] = useState('')
     const [showFilters, setShowFilters] = useState(false) // Mobile filters toggle
+
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -144,7 +174,7 @@ const FoodOrdersPage = () => {
         setFormData({
             employee_id: '',
             visitor_name: '', // Kept for safety but unused
-            menu_date: new Date().toISOString().split('T')[0],
+            menu_date: getLocalISOString(new Date()),
             meal_type: 'ALMUERZO',
             selected_option: 'Menú del Día',
             order_type: 'MANUAL',
@@ -417,7 +447,7 @@ const FoodOrdersPage = () => {
                     notify.success('Pedido eliminado correctamente')
                 } catch (error) {
                     console.error('Error deleting order:', error)
-                    notify.error('Error al eliminar el pedido')
+                    notify.error(error.message || 'Error al eliminar el pedido')
                 }
                 closeConfirmation()
             }
@@ -555,18 +585,22 @@ const FoodOrdersPage = () => {
                         <div className="flex gap-2 w-full md:w-auto">
                             <button
                                 onClick={() => setDateRange({
-                                    startDate: new Date().toISOString().split('T')[0],
-                                    endDate: new Date().toISOString().split('T')[0]
+                                    startDate: getLocalISOString(new Date()),
+                                    endDate: getLocalISOString(new Date())
                                 })}
                                 className="flex-1 md:flex-none px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800/50 transition-colors"
                             >
                                 HOY
                             </button>
                             <button
-                                onClick={() => setDateRange({
-                                    startDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-                                    endDate: new Date(Date.now() + 86400000).toISOString().split('T')[0]
-                                })}
+                                onClick={() => {
+                                    const tomorrow = new Date()
+                                    tomorrow.setDate(tomorrow.getDate() + 1)
+                                    setDateRange({
+                                        startDate: getLocalISOString(tomorrow),
+                                        endDate: getLocalISOString(tomorrow)
+                                    })
+                                }}
                                 className="flex-1 md:flex-none px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-xs font-bold rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 border border-purple-200 dark:border-purple-800/50 transition-colors"
                             >
                                 MAÑANA
@@ -788,11 +822,15 @@ const FoodOrdersPage = () => {
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 font-bold">
-                                            {order.employee?.full_name?.charAt(0) || 'V'}
+                                            {(order.employee?.full_name || order.employees?.full_name || order.visitor_name || '?').charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="font-bold text-gray-900 dark:text-white leading-tight">{order.employee?.full_name || 'Visitante'}</p>
-                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tight">{order.employee?.role_name || 'Externo'}</p>
+                                            <p className="font-bold text-gray-900 dark:text-white leading-tight">
+                                                {order.employee?.full_name || order.employees?.full_name || order.visitor_name || 'Visitante'}
+                                            </p>
+                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tight">
+                                                {order.employee?.role_name || order.employees?.role_name || 'Externo'}
+                                            </p>
                                         </div>
                                     </div>
                                     {getStatusBadge(order.status)}

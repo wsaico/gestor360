@@ -20,10 +20,12 @@ import {
     Tag,
     Layers
 } from 'lucide-react'
+import { ROLES } from '@utils/constants'
 
 const MasterCatalogPage = () => {
     const { notify } = useNotification()
     const { user } = useAuth()
+    const isAdmin = user?.role === ROLES.ADMIN
 
     const [products, setProducts] = useState([])
     const [types, setTypes] = useState([])
@@ -153,6 +155,10 @@ const MasterCatalogPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault()
+        if (!isAdmin) {
+            notify.error('No tiene permisos para realizar esta acción')
+            return
+        }
         try {
             if (editingProduct) {
                 await masterProductService.updateProduct(editingProduct.id, formData)
@@ -169,6 +175,10 @@ const MasterCatalogPage = () => {
     }
 
     const handleDelete = async (id) => {
+        if (!isAdmin) {
+            notify.error('No tiene permisos para realizar esta acción')
+            return
+        }
         if (!window.confirm('¿Está seguro de eliminar este producto?')) return
         try {
             await masterProductService.deleteProduct(id)
@@ -182,6 +192,10 @@ const MasterCatalogPage = () => {
     // --- TYPE HANDLERS ---
     const handleCreateType = async (e) => {
         e.preventDefault()
+        if (!isAdmin) {
+            notify.error('No tiene permisos para realizar esta acción')
+            return
+        }
         try {
             const newType = await masterProductService.createType(typeForm)
             notify.success('Tipo creado')
@@ -238,21 +252,25 @@ const MasterCatalogPage = () => {
                     </div>
 
                     <div className="flex gap-2">
-                        <button
-                            onClick={() => setShowImportModal(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-sm"
-                        >
-                            <Upload className="w-5 h-5" />
-                            <span className="hidden sm:inline">Importar</span>
-                        </button>
+                        {isAdmin && (
+                            <>
+                                <button
+                                    onClick={() => setShowImportModal(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-sm"
+                                >
+                                    <Upload className="w-5 h-5" />
+                                    <span className="hidden sm:inline">Importar</span>
+                                </button>
 
-                        <button
-                            onClick={() => handleOpenModal()}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-sm"
-                        >
-                            <Plus className="w-5 h-5" />
-                            <span className="hidden sm:inline">Nuevo Producto</span>
-                        </button>
+                                <button
+                                    onClick={() => handleOpenModal()}
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-sm"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                    <span className="hidden sm:inline">Nuevo Producto</span>
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
@@ -283,7 +301,7 @@ const MasterCatalogPage = () => {
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Área / Talla</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Precio</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                                {isAdmin && <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -312,24 +330,26 @@ const MasterCatalogPage = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
                                             S/ {Number(product.base_price).toFixed(2)}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                            <div className="flex justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleOpenModal(product)}
-                                                    className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                                                    title="Editar"
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(product.id)}
-                                                    className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
-                                                    title="Eliminar"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </td>
+                                        {isAdmin && (
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleOpenModal(product)}
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                                        title="Editar"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(product.id)}
+                                                        className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))
                             )}
@@ -409,7 +429,7 @@ const MasterCatalogPage = () => {
                                 <div className="col-span-2 md:col-span-1">
                                     <label className="label flex justify-between">
                                         Tipo
-                                        <button type="button" onClick={() => setShowTypeModal(true)} className="text-xs text-primary-600 hover:underline font-bold">+ Crear Nuevo</button>
+                                        {isAdmin && <button type="button" onClick={() => setShowTypeModal(true)} className="text-xs text-primary-600 hover:underline font-bold">+ Crear Nuevo</button>}
                                     </label>
                                     <select
                                         value={formData.type_id}

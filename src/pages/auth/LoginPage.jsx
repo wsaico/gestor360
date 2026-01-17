@@ -128,7 +128,7 @@ const LoginPage = () => {
         return
       }
 
-      const result = await login(formData.email, formData.password)
+      const result = await login(formData.email.trim(), formData.password)
 
       if (result.success) {
         const from = location.state?.from?.pathname || '/dashboard'

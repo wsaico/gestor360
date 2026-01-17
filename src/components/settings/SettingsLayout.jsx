@@ -21,7 +21,7 @@ const SettingsLayout = () => {
     const [showMobileMenu, setShowMobileMenu] = useState(false)
 
     const navigation = [
-        { name: 'General', to: '/admin/configuracion', icon: Settings, exact: true },
+        { name: 'General', to: '/admin/configuracion', icon: Settings, exact: true, roles: [ROLES.ADMIN] },
         { name: 'Apariencia', to: '/admin/configuracion/apariencia', icon: Palette },
         { name: 'Perfil', to: '/admin/configuracion/perfil', icon: User },
         { name: 'Notificaciones', to: '/admin/configuracion/notificaciones', icon: Bell },

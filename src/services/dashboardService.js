@@ -162,7 +162,7 @@ class DashboardService {
         .select('*', { count: 'exact' })
         .eq('status', 'ACTIVE')
 
-      if (stationId) driversQuery = driversQuery.eq('station_id', stationId)
+      // if (stationId) driversQuery = driversQuery.eq('station_id', stationId) // Column does not exist
       const { count: drivers } = await driversQuery
 
       // 2. Vehículos Operativos
@@ -171,15 +171,15 @@ class DashboardService {
         .select('*', { count: 'exact' })
         .eq('status', 'OPERATIONAL')
 
-      if (stationId) vehiclesQuery = vehiclesQuery.eq('station_id', stationId)
+      // if (stationId) vehiclesQuery = vehiclesQuery.eq('station_id', stationId) // Column does not exist
       const { count: vehicles } = await vehiclesQuery
 
       // 3. Viajes de Hoy
       let tripsQuery = supabase
-        .from('transport_trips')
+        .from('transport_schedules')
         .select('*', { count: 'exact' })
-        .eq('date', today)
-        .in('status', ['SCHEDULED', 'IN_PROGRESS'])
+        .eq('scheduled_date', today)
+        .in('status', ['PENDING', 'IN_PROGRESS'])
 
       // Note: Trips might link to route -> station_id or have direct station_id. 
       // Assuming direct station_id for simplicity or strictly global for now if not.
